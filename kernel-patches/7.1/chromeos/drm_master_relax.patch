@@ -1,0 +1,69 @@
+Port of the ChromeOS "drm_master_relax" debugfs interface to vanilla 7.1.
+
+ChromeOS hands DRM master back and forth between Chrome and frecon (the
+console) on VT switches. Chrome opens the DRM device fd in the browser
+process but issues SET_MASTER/DROP_MASTER from the unprivileged GPU
+process, so the vanilla drm_master_check_perm() pid check rejects the
+drop (and the GPU process has no CAP_SYS_ADMIN). frecon therefore logs
+"Chrome did not release master", fails to take over the display, and
+Ctrl-Alt-F2 lands on a black screen with no way back.
+
+The ChromeOS kernels carry a small patch that adds a global
+/sys/kernel/debug/dri/drm_master_relax debugfs bool; frecon writes 'Y'
+to it at startup (see set_drm_master_relax() in frecon). When set,
+SET_MASTER/DROP_MASTER are allowed for any drm_file that is or was
+master, regardless of the calling task. This ports that patch:
+
+- drm_auth.c: define drm_master_relax and accept was_master files when
+  the flag is set even if the caller pid differs from the opener pid.
+- drm_debugfs.c: create the debugfs bool under the dri root directory
+  (0600, root-only, matching the ChromeOS kernels).
+- drm_internal.h: declare the flag.
+
+--- a/drivers/gpu/drm/drm_auth.c
++++ b/drivers/gpu/drm/drm_auth.c
+@@ -229,11 +229,22 @@
+  * - weston
+  * - various compositors based on wlroots
+  */
++/*
++ * When true, allow SET_MASTER/DROP_MASTER for a was_master drm_file even
++ * from a task other than the one that opened the device. ChromeOS frecon
++ * enables this via /sys/kernel/debug/dri/drm_master_relax so DRM master
++ * can be handed between Chrome (device fd opened in the browser process,
++ * master ioctls issued by the unprivileged GPU process) and the console
++ * on VT switches.
++ */
++bool drm_master_relax;
++
+ static int
+ drm_master_check_perm(struct drm_device *dev, struct drm_file *file_priv)
+ {
+ 	if (file_priv->was_master &&
+-	    rcu_access_pointer(file_priv->pid) == task_tgid(current))
++	    (drm_master_relax ||
++	     rcu_access_pointer(file_priv->pid) == task_tgid(current)))
+ 		return 0;
+ 
+ 	if (!capable(CAP_SYS_ADMIN))
+--- a/drivers/gpu/drm/drm_debugfs.c
++++ b/drivers/gpu/drm/drm_debugfs.c
+@@ -298,6 +298,8 @@
+ void drm_debugfs_init_root(void)
+ {
+ 	drm_debugfs_root = debugfs_create_dir("dri", NULL);
++	debugfs_create_bool("drm_master_relax", 0600, drm_debugfs_root,
++			    &drm_master_relax);
+ #if IS_ENABLED(CONFIG_DRM_ACCEL)
+ 	accel_debugfs_root = debugfs_create_dir("accel", NULL);
+ #endif
+--- a/drivers/gpu/drm/drm_internal.h
++++ b/drivers/gpu/drm/drm_internal.h
+@@ -146,6 +146,7 @@
+ 				  struct drm_file *filp);
+ 
+ /* drm_auth.c */
++extern bool drm_master_relax;
+ int drm_getmagic(struct drm_device *dev, void *data,
+ 		 struct drm_file *file_priv);
+ int drm_authmagic(struct drm_device *dev, void *data,
