@@ -1,0 +1,22 @@
+--- a/arch/x86/kvm/vmx/vmx.c	2026-07-23 18:29:21.311834437 -0700
++++ b/arch/x86/kvm/vmx/vmx.c	2026-07-23 18:29:21.320029088 -0700
+@@ -7822,6 +7822,19 @@
+ 	 * In that case it is not possible to map all guest RAM as WB, so
+ 	 * always trust guest PAT.
+ 	 */
++	/*
++	 * brunch-lnl: CPUs with self-snoop (e.g. Lunar Lake) stay cache
++	 * coherent even when the guest aliases memory types, so it is always
++	 * safe to honor guest PAT.  ARCVM's virtio-gpu venus path maps GPU
++	 * memory write-combining inside the guest; if KVM forces it to WB the
++	 * GPU-completion fences are never seen by the guest and Vulkan fences
++	 * hang (SurfaceFlinger stalls -> Play Store fails to start).  This
++	 * restores the pre-c9c1e20b4c7d "always honor guest PAT on self-snoop"
++	 * behavior without touching the userspace-visible quirk bits.
++	 */
++	if (static_cpu_has(X86_FEATURE_SELFSNOOP))
++		return false;
++
+ 	return !kvm_arch_has_noncoherent_dma(kvm) &&
+ 	       kvm_check_has_quirk(kvm, KVM_X86_QUIRK_IGNORE_GUEST_PAT);
+ }
