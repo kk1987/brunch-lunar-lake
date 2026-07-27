@@ -1,0 +1,85 @@
+isl: never advertise the Xe2 CCS DRM modifiers
+
+Userspace half of kernel-patches/7.1/chromeos/0002-lnl_bmg_ccs_deadvertise.patch,
+which removes the same two modifiers from the i915 display planes.
+
+Every ARC window rendered as vertical stripe noise with the coarse layout still
+recognisable. The consumer on this system is a ChromeOS R149 image whose
+minigbm predates Lunar Lake and has no entry for I915_FORMAT_MOD_4_TILED_LNL_CCS:
+when the guest negotiates that layout for a buffer it exports, Chrome imports it
+as plain 4-tiled and reads the compressed bytes as if they were pixels.
+
+This replaces the INTEL_DEBUG=noccs that brunch-patches/87-arcvm_seccomp.sh was
+exporting into the crosvm process tree. noccs was empirically effective but far
+too broad: DEBUG_NO_CCS has exactly three effects (grep DEBUG_NO_CCS in
+src/intel) --
+
+  1. isl.c:3902        -- disables aux surfaces everywhere,
+  2. anv_device.c:1554 -- disables PAT-memtype compression,
+  3. isl_drm.c         -- removes the CCS modifiers from the advertised list.
+
+Only (3) is load-bearing here. (2) is provably unreachable for a bo that will be
+shared: anv_image_is_pat_compressible() returns false for any image with
+external_handle_types or DRM-modifier tiling, so a compressed memory type is
+never even offered for one -- confirmed by aggregating every host-side
+vkAllocateMemory under a venus guest, where compressed and exported never
+co-occur. (1) is pure loss: it costs bandwidth on everything the VM draws,
+including surfaces that never leave the process.
+
+Measured on 8086:64a0 by enumerating VkDrmFormatModifierPropertiesListEXT:
+
+  stock, no noccs   LINEAR, X_TILED, 4_TILED, 4_TILED_LNL_CCS   (1 of 4 CCS)
+  stock, noccs      LINEAR, X_TILED, 4_TILED                    (0 of 3)
+  patched, no noccs LINEAR, X_TILED, 4_TILED                    (0 of 3)
+
+i.e. the patch reproduces exactly the modifier list noccs produced, while
+leaving render target compression, fast clears and sampler decompression alone.
+
+BMG is de-advertised for the same reason and for symmetry with the kernel patch;
+this package only ever installs on Lunar Lake, so it is not reachable in
+practice.
+
+--- a/src/intel/isl/isl_drm.c
++++ b/src/intel/isl/isl_drm.c
+@@ -292,21 +292,27 @@ isl_drm_modifier_get_score(const struct intel_device_info *devinfo,
+
+       return 5;
+    case I915_FORMAT_MOD_4_TILED_LNL_CCS:
+-      if (devinfo->ver < 20 || devinfo->has_local_mem)
+-         return 0;
+-
+-      if (INTEL_DEBUG(DEBUG_NO_CCS))
+-         return 0;
+-
+-      return 4;
++      /* brunch: never advertise the Xe2 CCS modifiers.
++       *
++       * This is the userspace half of
++       * kernel-patches/7.1/chromeos/0002-lnl_bmg_ccs_deadvertise.patch, which
++       * removes the same two modifiers from the display planes. The consumer
++       * on this system is a ChromeOS R149 image whose minigbm predates Lunar
++       * Lake and has no entry for them, so when the guest negotiates a CCS
++       * layout for a buffer it exports, Chrome imports it as plain 4-tiled and
++       * reads the compressed bytes as if they were pixels -- which is why
++       * every ARC window rendered as vertical stripe noise with the coarse
++       * layout still intact.
++       *
++       * Only the *shared* layout is given up. Internal CCS -- render target
++       * compression, fast clears, sampler decompression -- is untouched, which
++       * is what makes this preferable to INTEL_DEBUG=noccs: that also disables
++       * aux surfaces everywhere (isl.c:3902) and costs bandwidth on everything
++       * the VM draws, not just on buffers that cross a process boundary.
++       */
++      return 0;
+    case I915_FORMAT_MOD_4_TILED_BMG_CCS:
+-      if (devinfo->ver < 20 || !devinfo->has_local_mem)
+-         return 0;
+-
+-      if (INTEL_DEBUG(DEBUG_NO_CCS))
+-         return 0;
+-
+-      return 4;
++      return 0;
+    }
+ }
+

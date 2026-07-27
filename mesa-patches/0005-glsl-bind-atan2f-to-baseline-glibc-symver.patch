@@ -1,0 +1,49 @@
+glsl: bind atan2f to the baseline glibc symbol version
+
+Packaging fix, not a behaviour change: without it the libgallium built on a
+host with glibc 2.43 headers cannot be loaded at all by the ChromeOS R149
+image, whose glibc is 2.38.
+
+glibc 2.43 added a correctly-rounded atan2f under a new symbol version.
+src/compiler/glsl/ir_constant_expression.cpp is the only translation unit in
+the whole tree that references atan2f, so that one symbol was single-handedly
+raising libgallium's requirement:
+
+  before   readelf --dyn-syms | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -1
+           -> GLIBC_2.43
+  after    -> GLIBC_2.38   (matches libvulkan_intel.so and the R149 image)
+
+The two atan2f implementations differ only in last-place rounding, and the
+call site is GLSL compile-time constant folding of atan(y, x).
+
+Historically this was done by hand as a post-link binary edit, which is what
+made packages/mesa-lnl.tar.gz's libgallium_dri.so non-reproducible from the
+build tree (see mesa-patches/README.md). This replaces it.
+
+--- a/src/compiler/glsl/ir_constant_expression.cpp
++++ b/src/compiler/glsl/ir_constant_expression.cpp
+@@ -34,6 +34,24 @@
+  */
+ 
+ #include <math.h>
++
++/* brunch: keep the glibc symbol version floor at the x86-64 baseline.
++ *
++ * glibc 2.43 added a correctly-rounded atan2f under a new symbol version, so a
++ * host toolchain with 2.43 headers emits a reference to atan2f@GLIBC_2.43 --
++ * and this is the only translation unit in the whole tree that references
++ * atan2f, so that single symbol is what pins libgallium's requirement above
++ * the glibc of the ChromeOS R149 image we install into (2.38), where it then
++ * fails to load outright.
++ *
++ * Bind the reference to the baseline version instead. The two implementations
++ * differ only in last-place rounding, and this call site is GLSL compile-time
++ * constant folding of atan(y, x).
++ */
++#if defined(__GLIBC__) && defined(__x86_64__)
++__asm__(".symver atan2f,atan2f@GLIBC_2.2.5");
++#endif
++
+ #include "util/rounding.h" /* for _mesa_roundeven */
+ #include "util/half_float.h"
+ #include "ir.h"

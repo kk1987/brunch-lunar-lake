@@ -1,0 +1,163 @@
+--- a/src/gbm/meson.build
++++ b/src/gbm/meson.build
+@@ -6,6 +6,7 @@
+ files_gbm = files(
+   'main/backend.c',
+   'main/backend.h',
++  'main/brunch_minigbm_compat.c',
+   'main/gbm.c',
+   'main/gbm.h',
+   'main/gbmint.h',
+--- a/src/gbm/main/gbm.c
++++ b/src/gbm/main/gbm.c
+@@ -485,6 +485,93 @@
+  *
+  * \sa enum gbm_bo_flags for the list of usage flags
+  */
++/* brunch: ChromeOS Chrome links against these two minigbm-private symbols,
++ * which Mesa's gbm does not export - without them chrome refuses to start with
++ * "undefined symbol: gbm_bo_get_plane_fd". Provide forwarding implementations. */
++GBM_EXPORT int gbm_bo_get_plane_fd(struct gbm_bo *bo, size_t plane);
++GBM_EXPORT size_t gbm_bo_get_plane_size(struct gbm_bo *bo, size_t plane);
++
++GBM_EXPORT int
++gbm_bo_get_plane_fd(struct gbm_bo *bo, size_t plane)
++{
++   return gbm_bo_get_fd_for_plane(bo, (int)plane);
++}
++
++GBM_EXPORT size_t
++gbm_bo_get_plane_size(struct gbm_bo *bo, size_t plane)
++{
++   int planes = gbm_bo_get_plane_count(bo);
++   if ((int)plane >= planes)
++      return 0;
++
++   uint32_t off = gbm_bo_get_offset(bo, plane);
++   if ((int)plane + 1 < planes) {
++      uint32_t next = gbm_bo_get_offset(bo, (int)plane + 1);
++      if (next > off)
++         return next - off;
++   }
++   return (size_t)gbm_bo_get_stride_for_plane(bo, (int)plane) *
++          gbm_bo_get_height(bo);
++}
++
++/*
++ * brunch: ChromeOS Chrome is compiled against minigbm's gbm.h, whose
++ * gbm_bo_flags diverge from Mesa's from bit5 on (minigbm bit5 = TEXTURING,
++ * Mesa bit5 = PROTECTED). This library is Mesa's gbm, so the minigbm encoding
++ * Chrome passes in has to be translated, or a texturing request is imported as
++ * a protected buffer. Bits 0-4 are identical; only Mesa bits 0-6 are ever
++ * emitted, never bit7+ (Mesa's FIXED_COMPRESSION bits).
++ */
++static uint32_t
++brunch_minigbm_to_mesa_flags(uint32_t f)
++{
++   uint32_t o = f & 0x1f;              /* bits 0-4 are identical */
++   if (f & (1u << 5))  o |= (1u << 2); /* minigbm TEXTURING       -> Mesa RENDERING */
++   if (f & (1u << 8))  o |= (1u << 5); /* minigbm PROTECTED       -> Mesa PROTECTED */
++   if (f & (1u << 16)) o |= (1u << 6); /* minigbm FRONT_RENDERING -> Mesa FRONT_RENDERING */
++   return o;
++}
++
++/* brunch: gbm call tracing, off unless the library is built with
++ * -DBRUNCH_GBM_DEBUG. It logs the format/flags/modifiers/result of every bo
++ * allocation and import - this is what found the gbm_create_device => NULL
++ * backend-path bug. Chrome additionally needs --enable-logging=stderr and
++ * --disable-logging-redirect for the lines to reach /var/log/ui/. It sits on a
++ * hot path and is far too noisy to ship enabled. */
++#ifdef BRUNCH_GBM_DEBUG
++#include <sys/sysmacros.h>
++static void
++brunch_gbmlog(const char *fn, struct gbm_device *gbm,
++              uint32_t w, uint32_t h, uint32_t format,
++              uint32_t oflags, uint32_t tflags,
++              const uint64_t *mods, unsigned cnt, void *result)
++{
++   struct stat sb;
++   unsigned devminor = 999;
++   int dfd = gbm ? gbm_device_get_fd(gbm) : -1;
++   if (dfd >= 0 && fstat(dfd, &sb) == 0) devminor = (unsigned)minor(sb.st_rdev);
++   char fc[5] = { format & 0xff, (format >> 8) & 0xff,
++                  (format >> 16) & 0xff, (format >> 24) & 0xff, 0 };
++   fprintf(stderr, "BRUNCHGBM[dev minor=%u] %s %ux%u fmt=%.4s oflags=0x%x tflags=0x%x nmod=%u [",
++           devminor, fn, w, h, fc, oflags, tflags, cnt);
++   for (unsigned i = 0; i < cnt && mods; i++)
++      fprintf(stderr, "0x%llx ", (unsigned long long)mods[i]);
++   if (result) {
++      struct gbm_bo *b = (struct gbm_bo *)result;
++      fprintf(stderr, "] => OK got_mod=0x%llx planes=%d stride=%u\n",
++              (unsigned long long)gbm_bo_get_modifier(b),
++              gbm_bo_get_plane_count(b), gbm_bo_get_stride(b));
++   } else {
++      fprintf(stderr, "] => NULL-FAIL\n");
++   }
++   fflush(stderr);
++}
++#define BRUNCH_GBM_LOG(...) do { fprintf(stderr, __VA_ARGS__); fflush(stderr); } while (0)
++#else
++#define brunch_gbmlog(...) ((void)0)
++#define BRUNCH_GBM_LOG(...) ((void)0)
++#endif
++
+ GBM_EXPORT struct gbm_bo *
+ gbm_bo_create(struct gbm_device *gbm,
+               uint32_t width, uint32_t height,
+@@ -495,7 +582,11 @@
+       return NULL;
+    }
+ 
+-   return gbm->v0.bo_create(gbm, width, height, format, flags, NULL, 0);
++   uint32_t oflags = flags;
++   flags = brunch_minigbm_to_mesa_flags(flags);
++   struct gbm_bo *bo = gbm->v0.bo_create(gbm, width, height, format, flags, NULL, 0);
++   brunch_gbmlog("bo_create", gbm, width, height, format, oflags, flags, NULL, 0, bo);
++   return bo;
+ }
+ 
+ GBM_EXPORT struct gbm_bo *
+@@ -546,7 +637,11 @@
+       return NULL;
+    }
+ 
+-   return gbm->v0.bo_create(gbm, width, height, format, flags, modifiers, count);
++   uint32_t oflags = flags;
++   flags = brunch_minigbm_to_mesa_flags(flags);
++   struct gbm_bo *bo = gbm->v0.bo_create(gbm, width, height, format, flags, modifiers, count);
++   brunch_gbmlog("bo_create_mod2", gbm, width, height, format, oflags, flags, modifiers, count, bo);
++   return bo;
+ }
+ 
+ /**
+@@ -580,7 +675,29 @@
+ gbm_bo_import(struct gbm_device *gbm,
+               uint32_t type, void *buffer, uint32_t flags)
+ {
+-   return gbm->v0.bo_import(gbm, type, buffer, flags);
++   /* brunch: Chrome is compiled against minigbm's headers, whose import
++    * constants are off by one from Mesa's:
++    *   minigbm GBM_BO_IMPORT_FD_MODIFIER = 0x5505  (Mesa: 0x5504)
++    *   minigbm GBM_BO_IMPORT_FD_PLANAR   = 0x5504  (deprecated, unused)
++    * struct gbm_import_fd_modifier_data is byte-identical on both sides, so
++    * remapping the type constant is enough. 0x5504 is deliberately not
++    * remapped: for a pure-Mesa caller that is the native FD_MODIFIER. */
++   uint32_t mesa_type = (type == 0x5505u) ? GBM_BO_IMPORT_FD_MODIFIER : type;
++   uint32_t mesa_flags = brunch_minigbm_to_mesa_flags(flags);
++   errno = 0;
++   struct gbm_bo *r = gbm->v0.bo_import(gbm, mesa_type, buffer, mesa_flags);
++   if (mesa_type == GBM_BO_IMPORT_FD_MODIFIER) {
++      struct gbm_import_fd_modifier_data *d = buffer;
++      (void)d;
++      BRUNCH_GBM_LOG("BRUNCHGBM bo_import FD_MODIFIER(type0x%x->0x%x) %ux%u fmt=%.4s num_fds=%u mod=0x%llx flags=0x%x->0x%x => %s (errno=%d %s)\n",
++              type, mesa_type, d->width, d->height, (const char *)&d->format, d->num_fds,
++              (unsigned long long)d->modifier, flags, mesa_flags,
++              r ? "OK" : "NULL-FAIL", errno, r ? "" : strerror(errno));
++   } else {
++      BRUNCH_GBM_LOG("BRUNCHGBM bo_import type=0x%x(->0x%x) flags=0x%x => %s (errno=%d %s)\n",
++              type, mesa_type, flags, r ? "OK" : "NULL-FAIL", errno, r ? "" : strerror(errno));
++   }
++   return r;
+ }
+ 
+ /**

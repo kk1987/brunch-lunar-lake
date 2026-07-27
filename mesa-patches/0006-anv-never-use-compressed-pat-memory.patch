@@ -1,0 +1,91 @@
+anv: never place a bo in compressed PAT memory
+
+This is what INTEL_DEBUG=noccs was actually buying, and it is the last of the
+brunch-patches/87-arcvm_seccomp.sh workaround: with this patch the wrapper no
+longer exports it, and both drivers keep colour compression everywhere else.
+
+Every ARC window rendered as vertical stripe noise with the coarse layout still
+recognisable. Established on the target machine (8086:64a0, xe, ChromeOS R149
+guest under crosvm) by a three-step A/B, one variable per step. The per-driver
+step is possible because ANV and iris are separate shared objects and
+`intel_debug` is not an exported dynamic symbol in either, so each honours or
+ignores DEBUG_NO_CCS independently without touching the environment:
+
+  1. de-advertising the Xe2 CCS DRM modifiers in both drivers (0003 + 0004)
+     reproduces exactly the modifier lists noccs produced -- measured with
+     VkDrmFormatModifierPropertiesListEXT and eglQueryDmaBufModifiersEXT
+     against the binaries unpacked from the shipped tarball -- and does NOT
+     fix it. So the declared layout is not what matters.
+  2. ANV alone made to ignore noccs, iris still honouring it: corruption
+     comes back. So it is ANV, not iris.
+  3. ANV made to ignore noccs everywhere EXCEPT this branch: clean. So it is
+     this branch, not isl.c:3902's aux/CCS_E.
+
+What this does not mean: the obvious story -- compressed bytes exported under a
+modifier that says nothing about compression, then read as pixels by an
+importer -- is ruled out. anv_image_is_pat_compressible() only offers a
+compressed memory type to images that are neither external nor DRM-modifier
+tiled, so nothing allocated through this branch is ever exported. The bo is
+already wrong to the guest's own rendering, and what reaches the window is a
+faithful copy of that garbage.
+
+Why compressed PAT memory misbehaves for a VM guest here is not established --
+only that it does. The host reproduction environment cannot show it: with no VM
+in the picture, compression round-trips cleanly through every test we have
+(texcheck, ccscheck, dmabufcheck, glcheck, glexport all pass with it enabled),
+which is why three real-machine rounds were needed to find it. A kernel or
+platform interaction is the obvious suspect; that is for the upstream report.
+
+Kept: render target compression, fast clears and sampler decompression, in ANV
+and in iris. noccs threw all of that away in both drivers -- measured at +50%
+to +83% frame time on bandwidth-bound work (venustest/ccsbench.c).
+
+--- a/src/intel/vulkan/anv_device.c
++++ b/src/intel/vulkan/anv_device.c
+@@ -1551,8 +1551,44 @@
+        * modifiers and enable compression if we can here.
+        */
+       alloc_flags |= ANV_BO_ALLOC_COMPRESSED;
+-   } else if (mem_type->compressed && !INTEL_DEBUG(DEBUG_NO_CCS)) {
+-      alloc_flags |= ANV_BO_ALLOC_COMPRESSED;
++   } else if (mem_type->compressed) {
++      /* brunch: deliberately do NOT set ANV_BO_ALLOC_COMPRESSED here.
++       *
++       * A bo placed in compressed PAT memory comes back as noise for
++       * everything an ARCVM guest draws: every ARC window rendered as
++       * vertical stripe noise with the coarse layout still recognisable.
++       * Established on the target machine (8086:64a0, xe, ChromeOS R149
++       * guest) by a three-step A/B, each step a single variable:
++       *
++       *   1. de-advertising the Xe2 CCS DRM modifiers in both drivers
++       *      (mesa-patches/0003 + 0004) reproduces exactly the modifier
++       *      lists INTEL_DEBUG=noccs produced -- and does not fix it, so
++       *      the declared layout is not what matters;
++       *   2. making ANV alone ignore noccs brings the corruption back
++       *      while iris keeps honouring it -> it is ANV, not iris;
++       *   3. making ANV ignore noccs everywhere EXCEPT this branch is
++       *      clean -> it is this branch, not isl.c's aux/CCS_E.
++       *
++       * Note what this does NOT mean. The obvious story -- compressed
++       * bytes exported under a modifier that does not mention them, then
++       * read as pixels -- is ruled out: anv_image_is_pat_compressible()
++       * only offers a compressed memory type to images that are neither
++       * external nor DRM-modifier tiled, so nothing allocated here is
++       * ever exported. The bo is corrupt to the guest's own rendering,
++       * and the correct copy of that garbage is what reaches the window.
++       * Why compressed PAT memory misbehaves for a VM guest on this
++       * kernel is NOT established -- only that it does. The host
++       * reproduction environment cannot show it: with no VM in the
++       * picture, compression round-trips cleanly through every test
++       * (texcheck, ccscheck, dmabufcheck all pass with it enabled).
++       *
++       * This replaces INTEL_DEBUG=noccs, which brunch-patches/
++       * 87-arcvm_seccomp.sh used to export into the crosvm process tree.
++       * noccs also threw away aux surfaces everywhere (isl.c:3902) in
++       * both drivers; steps 2 and 3 show neither of those was load
++       * bearing, so render target compression, fast clears and sampler
++       * decompression all stay, in ANV and in iris.
++       */
+    }
+ 
+    /* Anything imported or exported is EXTERNAL */

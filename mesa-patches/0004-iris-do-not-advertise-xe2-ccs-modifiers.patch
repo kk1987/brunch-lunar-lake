@@ -1,0 +1,81 @@
+iris: never advertise the Xe2 CCS DRM modifiers
+
+Third and final half of the same de-advertisement:
+
+  kernel-patches/7.1/chromeos/0002-lnl_bmg_ccs_deadvertise.patch  display planes
+  mesa-patches/0003-isl-do-not-advertise-xe2-ccs-modifiers.patch  ANV
+  this patch                                                      iris
+
+0003 alone was not enough, because iris does not share ANV's modifier
+filtering. ANV asks isl_drm_modifier_get_score() in src/intel/isl/isl_drm.c;
+iris has its own modifier_is_supported() in
+src/gallium/drivers/iris/iris_resource.c, which gates the Xe2 CCS modifiers
+only on INTEL_DEBUG(DEBUG_NO_CCS). Patching one does nothing to the other --
+which is why replacing INTEL_DEBUG=noccs with 0003 left everything ARC renders
+through GL still corrupted while the Vulkan path came good.
+
+Measured on 8086:64a0 with eglQueryDmaBufModifiersEXT, for each of
+AR24/XR24/AB24/NV12:
+
+  stock, no noccs   LINEAR, X_TILED, 4_TILED, 4_TILED_LNL_CCS   (1 of 4 CCS)
+  stock, noccs      LINEAR, X_TILED, 4_TILED                    (0 of 3)
+  patched, no noccs LINEAR, X_TILED, 4_TILED                    (0 of 3)
+
+i.e. the patch reproduces exactly the modifier list noccs produced, for the GL
+path as 0003 does for the Vulkan one, while leaving render target compression,
+fast clears and sampler decompression alone.
+
+Returning false from modifier_is_supported() covers every entry point, because
+they all funnel through it: iris_query_dmabuf_modifiers(),
+iris_is_dmabuf_modifier_supported(), select_best_modifier() and
+iris_resource_create_with_modifiers().
+
+BMG is de-advertised for the same reason and for symmetry with the other two
+patches; this package only ever installs on Lunar Lake, so it is not reachable
+in practice.
+
+--- a/src/gallium/drivers/iris/iris_resource.c
++++ b/src/gallium/drivers/iris/iris_resource.c
+@@ -134,13 +134,36 @@
+          return false;
+       break;
+    case I915_FORMAT_MOD_4_TILED_LNL_CCS:
+-      if (devinfo->ver < 20 || devinfo->has_local_mem)
+-         return false;
+-      break;
+    case I915_FORMAT_MOD_4_TILED_BMG_CCS:
+-      if (devinfo->ver < 20 || !devinfo->has_local_mem)
+-         return false;
+-      break;
++      /* brunch: never advertise the Xe2 CCS modifiers.
++       *
++       * iris does not share ANV's modifier filtering: ANV goes through
++       * isl_drm_modifier_get_score() in src/intel/isl/isl_drm.c, iris comes
++       * here. Both have to be patched -- see
++       * mesa-patches/0003-isl-do-not-advertise-xe2-ccs-modifiers.patch and
++       * kernel-patches/7.1/chromeos/0002-lnl_bmg_ccs_deadvertise.patch for the
++       * other two halves.
++       *
++       * The consumer on this system is a ChromeOS R149 image whose minigbm
++       * predates Lunar Lake and has no entry for these modifiers: when a
++       * buffer that gets exported is given a CCS layout, the importer reads it
++       * as plain 4-tiled and the compressed bytes show up as pixels. Every ARC
++       * window rendered through GL (the Play Store, the Play badge splash, the
++       * layers composited over a resized app) came out as vertical stripe
++       * noise with the coarse layout still intact.
++       *
++       * Only the *shared* layout is given up. Internal CCS -- render target
++       * compression, fast clears, sampler decompression -- is untouched, which
++       * is what makes this preferable to INTEL_DEBUG=noccs: that also disables
++       * aux surfaces everywhere (isl.c:3902) and costs bandwidth on everything
++       * drawn, not just on buffers that cross a process boundary.
++       *
++       * Returning false here covers every entry point, because they all funnel
++       * through this function: iris_query_dmabuf_modifiers(),
++       * iris_is_dmabuf_modifier_supported(), select_best_modifier() and
++       * iris_resource_create_with_modifiers().
++       */
++      return false;
+    case DRM_FORMAT_MOD_INVALID:
+    default:
+       return false;

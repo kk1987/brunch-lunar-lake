@@ -1,0 +1,75 @@
+anv: keep HOST_CACHED on exported bos (Xe2 / venus texture corruption)
+
+On Xe2 an allocation from a memory type that advertises HOST_CACHED silently
+becomes uncached as soon as it is exportable, and every buffer venus hands to
+an ARCVM guest is exportable. Two places conspire:
+
+  * anv_AllocateMemory() takes an early branch for EXTERNAL|SCANOUT that sets
+    only ANV_BO_ALLOC_HOST_COHERENT and never looks at the memory type's
+    VK_MEMORY_PROPERTY_HOST_CACHED_BIT, so the flag is lost.
+
+  * anv_device_get_pat_entry() then matches EXTERNAL|SCANOUT before the
+    integrated-platform host-caching rules and returns pat.scanout, which on
+    Xe2 is PAT_ENTRY(6, WC) -- CPU write-combining, GPU PAT 6 = XD, not
+    snooped. (BSpec 71582. On earlier integrated parts the scanout entry was
+    still coherent, which is why taking it unconditionally was harmless.)
+
+The exporter therefore uses the memory uncached while the importer, told
+HOST_CACHED by the very same memory type, maps it write-back. Neither side
+observes the other's writes. Under ARCVM this shows up as Android apps drawing
+uninitialised memory: glyph atlases rendered as white noise, stray geometry
+rasterised as thin diagonal streaks across the scene.
+
+Reproduced and fixed with a QEMU venus guest on 8086:64a0 (see
+internal/archive/arcvm-venus-hang/). Sweeping every host-visible memory type
+with a staging->image->readback / buffer->buffer / GPU-fill round trip:
+unpatched, the HOST_CACHED type fails every iteration with ~95% of bytes wrong
+in both directions; the non-cached type passes. Patched, both types pass
+24/24. lavapipe as the host backend passes either way, which places the fault
+in ANV rather than in the venus protocol.
+
+--- a/src/intel/vulkan/anv_device.c
++++ b/src/intel/vulkan/anv_device.c
+@@ -1679,6 +1679,16 @@
+ 
+    if (alloc_flags & (ANV_BO_ALLOC_EXTERNAL | ANV_BO_ALLOC_SCANOUT)) {
+       alloc_flags |= ANV_BO_ALLOC_HOST_COHERENT;
++      /* Exporting the bo does not release us from the caching the memory type
++       * promised: whoever imports it maps the memory according to those very
++       * flags. Dropping HOST_CACHED here used to be harmless because every
++       * integrated scanout PAT entry was still snooped, but on Xe2 it is not
++       * (pat.scanout is CPU:WC / GPU:XD), so the exporter ends up using the
++       * memory uncached while the importer uses it write-back and the two
++       * never see each other's writes.
++       */
++      if (mem_type->propertyFlags & VK_MEMORY_PROPERTY_HOST_CACHED_BIT)
++         alloc_flags |= ANV_BO_ALLOC_HOST_CACHED;
+    } else if (mem_type->propertyFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) {
+       if (mem_type->propertyFlags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)
+          alloc_flags |= ANV_BO_ALLOC_HOST_COHERENT;
+@@ -2187,6 +2197,25 @@
+    if (alloc_flags & ANV_BO_ALLOC_IMPORTED)
+       return &device->info->pat.cached_coherent;
+ 
++   /* An EXTERNAL allocation that the memory type advertised as HOST_CACHED
++    * must keep a cached, coherent PAT entry on integrated platforms.
++    *
++    * pat.scanout is CPU:WC / GPU:XD on Xe2 (BSpec 71582), i.e. genuinely
++    * uncached and not snooped -- on earlier integrated parts the scanout entry
++    * was still coherent, which is why taking it unconditionally used to be
++    * harmless. Handing that bo to an importer which was promised HOST_CACHED
++    * (venus maps it write-back inside a VM guest, per the memory type flags)
++    * leaves the two sides disagreeing about caching: neither observes the
++    * other's writes, and the importer reads uninitialised memory. Real scanout
++    * buffers still need the display-friendly entry, so only EXTERNAL-without-
++    * SCANOUT is redirected.
++    */
++   if ((alloc_flags & (ANV_BO_ALLOC_EXTERNAL | ANV_BO_ALLOC_SCANOUT)) &&
++       !(alloc_flags & ANV_BO_ALLOC_SCANOUT) &&
++       (alloc_flags & ANV_BO_ALLOC_HOST_CACHED) &&
++       !anv_physical_device_has_vram(device->physical))
++      return &device->info->pat.cached_coherent;
++
+    if (alloc_flags & (ANV_BO_ALLOC_EXTERNAL | ANV_BO_ALLOC_SCANOUT))
+       return &device->info->pat.scanout;
+ 
