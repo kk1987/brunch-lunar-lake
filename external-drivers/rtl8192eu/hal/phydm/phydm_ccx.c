@@ -1077,7 +1077,7 @@ void phydm_clm_racing_release(void *dm_void)
 	ccx->clm_app = CLM_BACKGROUND;
 }
 
-u8 phydm_clm_racing_ctrl(void *dm_void, enum phydm_nhm_level clm_lv)
+u8 phydm_clm_racing_ctrl(void *dm_void, enum phydm_clm_level clm_lv)
 {
 	struct dm_struct *dm = (struct dm_struct *)dm_void;
 	struct ccx_info *ccx = &dm->dm_ccx_info;
