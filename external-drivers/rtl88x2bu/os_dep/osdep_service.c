@@ -32,7 +32,9 @@ atomic_t _malloc_size = ATOMIC_INIT(0);
 #endif
 #endif /* DBG_MEMORY_LEAK */
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0)
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0)) && (LINUX_VERSION_CODE < KERNEL_VERSION(6, 13, 0))
+/* Namespace was removed from mainline and MODULE_IMPORT_NS() takes a string
+ * literal since kernel 6.13, so only import it on older kernels. */
 MODULE_IMPORT_NS(VFS_internal_I_am_really_a_filesystem_and_am_NOT_a_driver);
 #endif
 
