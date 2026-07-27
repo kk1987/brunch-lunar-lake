@@ -21,6 +21,13 @@
 #define __OSDEP_SERVICE_H_
 
 #include <linux/version.h>
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 16, 0)
+/* Kernel 6.16 removed the legacy timer API names. */
+#define del_timer(t)		timer_delete(t)
+#define del_timer_sync(t)	timer_delete_sync(t)
+#define from_timer(var, callback_timer, fld)	\
+	timer_container_of(var, callback_timer, fld)
+#endif
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 11, 0)
 #include <linux/sched/signal.h>
 #endif

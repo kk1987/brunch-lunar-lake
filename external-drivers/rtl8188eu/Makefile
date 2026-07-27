@@ -1,17 +1,17 @@
 SHELL := /bin/bash
-EXTRA_CFLAGS += $(USER_EXTRA_CFLAGS)
-EXTRA_CFLAGS += -O1
+ccflags-y += $(USER_EXTRA_CFLAGS)
+ccflags-y += -O1
 
-EXTRA_CFLAGS += -Wno-unused-variable
-EXTRA_CFLAGS += -Wno-unused-value
-EXTRA_CFLAGS += -Wno-unused-label
-EXTRA_CFLAGS += -Wno-unused-parameter
-EXTRA_CFLAGS += -Wno-unused-function
-EXTRA_CFLAGS += -Wno-unused
+ccflags-y += -Wno-unused-variable
+ccflags-y += -Wno-unused-value
+ccflags-y += -Wno-unused-label
+ccflags-y += -Wno-unused-parameter
+ccflags-y += -Wno-unused-function
+ccflags-y += -Wno-unused
 
-EXTRA_CFLAGS += -Wno-uninitialized
+ccflags-y += -Wno-uninitialized
 
-EXTRA_CFLAGS += -I$(src)/include
+ccflags-y += -I$(src)/include
 
 ccflags-y += -D__CHECK_ENDIAN__
 
@@ -87,11 +87,11 @@ $(shell cp $(TopDIR)/autoconf_rtl8188e_usb_linux.h $(TopDIR)/include/autoconf.h)
 endif
 
 ifeq ($(CONFIG_BT_COEXIST), y)
-EXTRA_CFLAGS += -DCONFIG_BT_COEXIST
+ccflags-y += -DCONFIG_BT_COEXIST
 endif
 
 ifeq ($(CONFIG_WOWLAN), y)
-EXTRA_CFLAGS += -DCONFIG_WOWLAN
+ccflags-y += -DCONFIG_WOWLAN
 endif
 
 SUBARCH := $(shell uname -m | sed -e "s/i.86/i386/; s/ppc.*/powerpc/; s/armv.l/arm/; s/aarch64/arm64/;")
