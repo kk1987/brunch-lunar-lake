@@ -1,0 +1,28 @@
+--- a/drivers/pci/pcie/aer.c
++++ b/drivers/pci/pcie/aer.c
+@@ -30,6 +30,7 @@
+ #include <linux/kfifo.h>
+ #include <linux/ratelimit.h>
+ #include <linux/slab.h>
++#include <linux/surface_devices_dmi.h>
+ #include <linux/vmcore_info.h>
+ #include <acpi/apei.h>
+ #include <acpi/ghes.h>
+@@ -46,6 +47,8 @@
+ #define AER_MAX_TYPEOF_COR_ERRS		16	/* as per PCI_ERR_COR_STATUS */
+ #define AER_MAX_TYPEOF_UNCOR_ERRS	32	/* as per PCI_ERR_UNCOR_STATUS*/
+ 
++static const struct dmi_system_id devices[] = surface_go_devices;
++
+ struct aer_err_source {
+ 	u32 status;			/* PCI_ERR_ROOT_STATUS */
+ 	u32 id;				/* PCI_ERR_ROOT_ERR_SRC */
+@@ -137,7 +140,7 @@
+ 
+ bool pci_aer_available(void)
+ {
+-	return !pcie_aer_disable && pci_msi_enabled();
++	return !pcie_aer_disable && pci_msi_enabled() && !dmi_check_system(devices);
+ }
+ 
+ #ifdef CONFIG_PCIE_ECRC

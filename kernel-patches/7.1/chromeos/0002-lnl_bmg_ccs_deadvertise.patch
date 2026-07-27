@@ -1,0 +1,24 @@
+--- a/drivers/gpu/drm/i915/display/intel_fb.c
++++ b/drivers/gpu/drm/i915/display/intel_fb.c
+@@ -245,12 +245,19 @@
+ 
+ static const struct intel_modifier_desc intel_modifiers[] = {
+ 	{
++		/*
++		 * brunch: do not advertise LNL/BMG CCS modifiers on the display
++		 * planes: ChromeOS recovery images ship a Mesa/iris that cannot
++		 * allocate or scan out these compressed formats, which sends the
++		 * ozone/KMS path into an allocation retry loop. Plain 4-tiled
++		 * (I915_FORMAT_MOD_4_TILED) is used instead.
++		 */
+ 		.modifier = I915_FORMAT_MOD_4_TILED_LNL_CCS,
+-		.display_ver = { 20, -1 },
++		.display_ver = { 99, 99 },
+ 		.plane_caps = INTEL_PLANE_CAP_TILING_4,
+ 	}, {
+ 		.modifier = I915_FORMAT_MOD_4_TILED_BMG_CCS,
+-		.display_ver = { 14, -1 },
++		.display_ver = { 99, 99 },
+ 		.plane_caps = INTEL_PLANE_CAP_TILING_4 | INTEL_PLANE_CAP_NEED64K_PHYS,
+ 	}, {
+ 		.modifier = I915_FORMAT_MOD_4_TILED_MTL_MC_CCS,

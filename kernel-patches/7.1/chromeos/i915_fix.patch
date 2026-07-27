@@ -1,0 +1,11 @@
+--- a/drivers/gpu/drm/i915/display/intel_fb.c
++++ b/drivers/gpu/drm/i915/display/intel_fb.c
+@@ -2235,7 +2242,7 @@
+ 
+ 	if (!drm_any_plane_has_format(display->drm,
+ 				      mode_cmd->pixel_format,
+-				      mode_cmd->modifier[0])) {
++				      mode_cmd->modifier[0]) && (mode_cmd->pixel_format != DRM_FORMAT_ARGB8888)) {
+ 		drm_dbg_kms(display->drm,
+ 			    "unsupported pixel format %p4cc / modifier 0x%llx\n",
+ 			    &mode_cmd->pixel_format, mode_cmd->modifier[0]);
