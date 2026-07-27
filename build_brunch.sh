@@ -37,7 +37,7 @@ if [ ! -z $1 ] && [ "$1" != "skip" ] ; then
 	recovery_image=$(losetup --show -fP "$1")
 	[ -b "$recovery_image"p3 ] || { echo "Failed to setup loop device"; exit 1; }
 	mount -o ro "$recovery_image"p3 ./out || { echo "Failed to mount ChromeOS rootfs"; exit 1; }
-	cp -a ./out/* ./chroot/ || { echo "Failed to copy ChromeOS rootfs content"; exit 1; }
+	cp -a ./out/* ./chroot/chromeos/ || { echo "Failed to copy ChromeOS rootfs content"; exit 1; }
 	umount ./out || { echo "Failed to unmount ChromeOS rootfs"; exit 1; }
 	losetup -d "$recovery_image" || { echo "Failed to detach loop device"; exit 1; }
 else
