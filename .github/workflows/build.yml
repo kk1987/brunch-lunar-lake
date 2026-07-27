@@ -69,8 +69,12 @@ jobs:
         run: |
           sudo ln -s $RUNNER_TEMP /persist
           mkdir /persist/keys
-          echo "$BRUNCH_PRIV" | base64 -d > /persist/keys/brunch.priv
-          echo "$BRUNCH_PEM" | base64 -d > /persist/keys/brunch.pem
+          if [ -n "$BRUNCH_PRIV" ] && [ -n "$BRUNCH_PEM" ]; then
+            echo "$BRUNCH_PRIV" | base64 -d > /persist/keys/brunch.priv
+            echo "$BRUNCH_PEM" | base64 -d > /persist/keys/brunch.pem
+          else
+            echo "No BRUNCH_PRIV/BRUNCH_PEM secrets set, kernels will be left unsigned (Secure Boot will not work)."
+          fi
       - name: Build kernels
         run: ./build_kernels.sh ${{ matrix.kernel }}
       - name: Clear keys
