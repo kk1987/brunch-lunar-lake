@@ -106,6 +106,8 @@ struct _io_ops;
 _adapter *rtw_drv_if2_init(_adapter *primary_padapter, void (*set_intf_ops)(_adapter *primary_padapter,struct _io_ops *pops));
 void rtw_drv_if2_free(_adapter *if2);
 void rtw_drv_if2_stop(_adapter *if2);
+int netdev_if2_open(struct net_device *pnetdev);
+int _netdev_if2_open(struct net_device *pnetdev);
 #ifdef CONFIG_MULTI_VIR_IFACES
 struct dvobj_priv;
 _adapter *rtw_drv_add_vir_if(_adapter *primary_padapter, void (*set_intf_ops)(_adapter *primary_padapter,struct _io_ops *pops));
@@ -123,5 +125,7 @@ int	rtw_gw_addr_query(_adapter *padapter);
 
 int rtw_suspend_common(_adapter *padapter);
 int rtw_resume_common(_adapter *padapter);
+
+u8 rtw_init_default_value(_adapter *padapter);
 
 #endif	//_OSDEP_INTF_H_

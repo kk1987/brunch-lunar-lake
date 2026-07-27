@@ -1225,4 +1225,7 @@ static struct _cmd_callback	rtw_cmd_callback[] = {
 };
 #endif
 
+int rtw_cmd_filter(struct cmd_priv *pcmdpriv, struct cmd_obj *cmd_obj);
+void lps_ctrl_wk_hdl(_adapter *padapter, u8 lps_ctrl_type);
+
 #endif // _CMD_H_

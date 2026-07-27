@@ -855,11 +855,10 @@ phy_PathA_RxIQK8723B(IN PADAPTER pAdapter,
 	    (((regEA4 & 0x03FF0000)>>16) > 0xf0) &&
 	    (tmp <0xf))
 		result |= 0x02;
-	else				//if Tx not OK, ignore Rx
+	else {				//if Tx not OK, ignore Rx
 		ODM_RT_TRACE(pDM_Odm,ODM_COMP_CALIBRATION, ODM_DBG_LOUD,
 			     ("Path A Rx IQK fail!!\n"));
-
-
+		}
 	return result;
 }
 
@@ -1189,10 +1188,10 @@ phy_PathB_RxIQK8723B(IN PADAPTER pAdapter, IN BOOLEAN configPathB)
 	    (((regEA4 & 0x03FF0000)>>16) >0xf0) &&
 	    (tmp <0xf))
 		result |= 0x02;
-	else
+	else {
 		ODM_RT_TRACE(pDM_Odm,ODM_COMP_CALIBRATION, ODM_DBG_LOUD,
 			     ("Path B Rx IQK fail!!\n"));
-
+		}
 	return result;
 }
 

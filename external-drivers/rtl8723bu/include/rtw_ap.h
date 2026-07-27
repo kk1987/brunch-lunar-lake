@@ -43,7 +43,7 @@ void rtw_ap_restore_network(_adapter *padapter);
 void rtw_set_macaddr_acl(_adapter *padapter, int mode);
 int rtw_acl_add_sta(_adapter *padapter, u8 *addr);
 int rtw_acl_remove_sta(_adapter *padapter, u8 *addr);
-
+u8 chk_sta_is_alive(struct sta_info *psta);
 u8 rtw_ap_set_pairwise_key(_adapter *padapter, struct sta_info *psta);
 int rtw_ap_set_group_key(_adapter *padapter, u8 *key, u8 alg, int keyid);
 int rtw_ap_set_wep_key(_adapter *padapter, u8 *key, u8 keylen, int keyid, u8 set_tx);

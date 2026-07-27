@@ -948,7 +948,7 @@ static s32 update_attrib(_adapter *padapter, _pkt *pkt, struct pkt_attrib *pattr
 		DBG_COUNTER(padapter->tx_logs.core_tx_upd_attrib_ap);
 	}
 	else
-		DBG_COUNTER(padapter->tx_logs.core_tx_upd_attrib_unknown);
+		{ DBG_COUNTER(padapter->tx_logs.core_tx_upd_attrib_unknown); }
 
 #ifdef CONFIG_TDLS
 	rtw_check_tdls_established(padapter, pattrib);

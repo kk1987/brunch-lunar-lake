@@ -153,4 +153,12 @@ void dbg_rtw_p2p_set_role(struct wifidirect_info *wdinfo, enum P2P_ROLE role, co
 	((wdinfo)->find_phase_state_exchange_cnt < P2P_FINDPHASE_EX_MAX && \
 	(wdinfo)->find_phase_state_exchange_cnt != P2P_FINDPHASE_EX_NONE)
 
+#ifdef CONFIG_CONCURRENT_MODE
+void p2p_concurrent_handler( _adapter*	padapter );
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 15, 0)
+void ap_p2p_switch_timer_process(struct timer_list *t);
+#else
+void ap_p2p_switch_timer_process (void *FunctionContext);
+#endif
+#endif
 #endif

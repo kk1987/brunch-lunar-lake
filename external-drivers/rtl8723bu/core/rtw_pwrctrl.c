@@ -425,8 +425,10 @@ void pwr_state_check_handler(struct timer_list *t)
 {
 #if LINUX_VERSION_CODE < KERNEL_VERSION(4, 15, 0)
 	_adapter *padapter = (_adapter *)FunctionContext;
-#else
+#elif LINUX_VERSION_CODE < KERNEL_VERSION(6, 16, 0)
 	_adapter *padapter = from_timer(padapter, t, pwr_state_check_timer);
+#else
+	_adapter *padapter = timer_container_of(padapter, t, pwr_state_check_timer);
 #endif
 
 	rtw_ps_cmd(padapter);

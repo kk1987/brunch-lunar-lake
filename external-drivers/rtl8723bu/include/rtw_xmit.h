@@ -587,6 +587,7 @@ int rtw_ack_tx_wait(struct xmit_priv *pxmitpriv, u32 timeout_ms);
 void rtw_ack_tx_done(struct xmit_priv *pxmitpriv, int status);
 #endif //CONFIG_XMIT_ACK
 
+void rtw_mfree_xmit_priv_lock (struct xmit_priv *pxmitpriv);
 
 //include after declaring struct xmit_buf, in order to avoid warning
 #include <xmit_osdep.h>

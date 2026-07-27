@@ -480,4 +480,9 @@ extern u32 rtw_init_bcmc_stainfo(_adapter* padapter);
 extern struct sta_info* rtw_get_bcmc_stainfo(_adapter* padapter);
 extern u8 rtw_access_ctrl(_adapter *padapter, u8 *mac_addr);
 
+void rtw_mfree_sta_priv_lock(struct	sta_priv *pstapriv);
+void rtw_mfree_all_stainfo(struct sta_priv *pstapriv);
+void rtw_mfree_stainfo(struct sta_info *psta);
+void _rtw_free_sta_xmit_priv_lock(struct sta_xmit_priv *psta_xmitpriv);
+
 #endif //_STA_INFO_H_

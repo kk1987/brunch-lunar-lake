@@ -360,10 +360,11 @@ void rtw_os_recv_indicate_pkt(_adapter *padapter, _pkt *pkt, struct rx_pkt_attri
 #endif //CONFIG_TCP_CSUM_OFFLOAD_RX
 
 		ret = rtw_netif_rx(padapter->pnetdev, pkt);
-		if (ret == NET_RX_SUCCESS)
+		if (ret == NET_RX_SUCCESS) {
 			DBG_COUNTER(padapter->rx_logs.os_netif_ok);
-		else
+		} else {
 			DBG_COUNTER(padapter->rx_logs.os_netif_err);
+		}
 	}
 }
 
@@ -607,10 +608,12 @@ static void _rtw_reordering_ctrl_timeout_handler(struct timer_list *t)
 static void _rtw_reordering_ctrl_timeout_handler (void *FunctionContext)
 #endif
 {
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 15, 0)
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 15, 0)
+	struct recv_reorder_ctrl *preorder_ctrl = (struct recv_reorder_ctrl *)FunctionContext;
+#elif LINUX_VERSION_CODE < KERNEL_VERSION(6, 16, 0)
 	struct recv_reorder_ctrl *preorder_ctrl = from_timer(preorder_ctrl, t, reordering_ctrl_timer);
 #else
-	struct recv_reorder_ctrl *preorder_ctrl = (struct recv_reorder_ctrl *)FunctionContext;
+	struct recv_reorder_ctrl *preorder_ctrl = timer_container_of(preorder_ctrl, t, reordering_ctrl_timer);
 #endif
 	rtw_reordering_ctrl_timeout_handler(preorder_ctrl);
 }

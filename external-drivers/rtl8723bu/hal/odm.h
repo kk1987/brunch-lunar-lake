@@ -1048,7 +1048,7 @@ typedef  struct DM_Out_Source_Dynamic_Mechanism_Structure
 //-----------HOOK BEFORE REG INIT-----------//
 	// ODM Platform info AP/ADSL/CE/MP = 1/2/3/4
 	u1Byte			SupportPlatform;
-	// ODM Support Ability DIG/RATR/TX_PWR_TRACK/ ¡K¡K = 1/2/3/¡K
+	// ODM Support Ability DIG/RATR/TX_PWR_TRACK/ ï¿½Kï¿½K = 1/2/3/ï¿½K
 	u4Byte			SupportAbility;
 	// ODM PCIE/USB/SDIO = 1/2/3
 	u1Byte			SupportInterface;
@@ -1649,6 +1649,31 @@ VOID
 ODM_UpdateInitRate(
 	IN	PDM_ODM_T	pDM_Odm,
 	IN	u1Byte		Rate
+	);
+
+VOID
+odm_CmnInfoHook_Debug(
+	IN		PDM_ODM_T		pDM_Odm
+	);
+
+VOID
+odm_CmnInfoUpdate_Debug(
+	IN		PDM_ODM_T		pDM_Odm
+	);
+
+VOID
+odm_SwAntDivInit(
+	IN		PDM_ODM_T		pDM_Odm
+	);
+
+VOID
+odm_SwAntDivChkAntSwitchCallback(
+	void *FunctionContext
+    );
+
+VOID
+odm_InitHybridAntDiv(
+	IN PDM_ODM_T	pDM_Odm
 	);
 
 //Remove ODM_DynamicARFBSelect() by RS_James

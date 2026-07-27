@@ -2345,10 +2345,12 @@ void BlinkTimerCallback(struct timer_list *t)
 void BlinkTimerCallback(void *data)
 #endif
 {
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 15, 0)
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 15, 0)
+	PLED_USB	 pLed = (PLED_USB)data;
+#elif LINUX_VERSION_CODE < KERNEL_VERSION(6, 16, 0)
 	PLED_USB	 pLed = from_timer(pLed, t, BlinkTimer);
 #else
-	PLED_USB	 pLed = (PLED_USB)data;
+	PLED_USB	 pLed = timer_container_of(pLed, t, BlinkTimer);
 #endif
 	_adapter		*padapter = pLed->padapter;
 
