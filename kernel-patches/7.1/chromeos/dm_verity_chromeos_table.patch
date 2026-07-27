@@ -1,0 +1,198 @@
+CHROMIUM: dm: verity: accept ChromeOS-style key=value tables
+
+ChromeOS userspace (imageloader, which mounts DLC images such as the
+Crostini termina VM and the cras noise-cancellation model) passes
+dm-verity tables in the legacy ChromeOS key=value format:
+
+  0 <sectors> verity payload=<dev> hashtree=<dev> hashstart=<sectors>
+    alg=<alg> root_hexdigest=<hex> salt=<hex> error_behavior=eio
+
+Upstream dm-verity only understands the positional format and rejects
+these tables with "Not enough arguments", so every DLC install fails at
+the mount step ("Imageloader LoadDlcImage() call failed", Crostini shows
+"error downloading"). Production ChromeOS kernels translate such tables
+at the top of verity_ctr; this ports that translation (chromeos-6.6
+tree) to the vanilla tree:
+
+- translated tables use version 0 (the original Chromium OS hash
+  format, still supported upstream), 4096-byte blocks, and hashstart
+  (converted from 512-byte sectors to 4K blocks) doubling as the data
+  block count and hash start block, matching the DLC image layout
+  (hash tree appended to the data, no superblock);
+- the ChromeOS-only "error_behavior" option is mapped onto upstream
+  optional args instead of porting the CrOS error-behavior machinery:
+  eio (the imageloader default) is upstream's default behavior, panic
+  maps to panic_on_corruption, none/ignore to ignore_corruption, and
+  unknown values fall back to eio with a warning;
+- unlike the CrOS original, the hashstart buffer is sized explicitly
+  (the original scnprintf's sizeof() of a pointer) and the translated
+  argv is also freed on the kzalloc error path.
+
+Verified in QEMU against a veritysetup --format=0 --no-superblock image:
+table accepted, payload md5 intact, corrupted payload returns EIO.
+
+--- a/drivers/md/dm-verity-target.c
++++ b/drivers/md/dm-verity-target.c
+@@ -1398,6 +1398,125 @@
+ }
+ 
+ /*
++ * CHROMIUM: ChromeOS userspace (imageloader, which mounts DLC images) passes
++ * dm-verity tables in the legacy ChromeOS key=value format (payload=
++ * hashtree= hashstart= alg= root_hexdigest= salt= error_behavior=) instead
++ * of the upstream positional format. Production ChromeOS kernels translate
++ * such tables at the top of verity_ctr; port that translation so DLC images
++ * mount on the vanilla tree. The translated table uses version 0 (the
++ * original Chromium OS hash format, still supported upstream) and 4096-byte
++ * blocks, with the hash tree appended to the data (hashstart doubles as the
++ * data block count). The ChromeOS-only "error_behavior" option is mapped
++ * onto upstream optional args: eio (the imageloader default) is the upstream
++ * default behavior, panic maps to panic_on_corruption, none/ignore maps to
++ * ignore_corruption; unknown values are treated as eio rather than rejected.
++ */
++static void verity_splitarg(char *arg, char **key, char **val)
++{
++	*key = strsep(&arg, "=");
++	*val = strsep(&arg, "");
++}
++
++static char *verity_chromeos_args(unsigned int *pargc, char ***pargv)
++{
++	char *hashstart = NULL;
++	char **argv = *pargv;
++	int argc = *pargc;
++	char *key, *val;
++	unsigned int nargc = 10;
++	char **nargv;
++	char *errstr;
++	int i;
++
++	nargv = kcalloc(12, sizeof(char *), GFP_KERNEL);
++	if (!nargv)
++		return "Failed to allocate memory";
++
++	nargv[0] = "0";		/* version (original Chromium OS format) */
++	nargv[3] = "4096";	/* data block size */
++	nargv[4] = "4096";	/* hash block size */
++	nargv[9] = "-";		/* salt (optional) */
++
++	for (i = 0; i < argc; ++i) {
++		DMDEBUG("Argument %d: '%s'", i, argv[i]);
++		verity_splitarg(argv[i], &key, &val);
++		if (!key) {
++			DMWARN("Bad argument %d: missing key?", i);
++			errstr = "Bad argument: missing key";
++			goto err;
++		}
++		if (!val) {
++			DMWARN("Bad argument %d='%s': missing value", i, key);
++			errstr = "Bad argument: missing value";
++			goto err;
++		}
++		if (!strcmp(key, "alg")) {
++			nargv[7] = val;
++		} else if (!strcmp(key, "payload")) {
++			nargv[1] = val;
++		} else if (!strcmp(key, "hashtree")) {
++			nargv[2] = val;
++		} else if (!strcmp(key, "root_hexdigest")) {
++			nargv[8] = val;
++		} else if (!strcmp(key, "hashstart")) {
++			unsigned long num;
++
++			if (kstrtoul(val, 10, &num)) {
++				errstr = "Invalid hashstart";
++				goto err;
++			}
++			/* 512-byte sectors to 4096-byte blocks */
++			num >>= (12 - SECTOR_SHIFT);
++			hashstart = kmalloc(24, GFP_KERNEL);
++			if (!hashstart) {
++				errstr = "Failed to allocate memory";
++				goto err;
++			}
++			scnprintf(hashstart, 24, "%lu", num);
++			nargv[5] = hashstart;
++			nargv[6] = hashstart;
++		} else if (!strcmp(key, "salt")) {
++			nargv[9] = val;
++		} else if (!strcmp(key, "error_behavior")) {
++			if (!strcmp(val, "panic"))
++				nargv[11] = "panic_on_corruption";
++			else if (!strcmp(val, "none") || !strcmp(val, "ignore"))
++				nargv[11] = "ignore_corruption";
++			else if (strcmp(val, "eio"))
++				DMWARN("Unknown error_behavior '%s', using eio",
++				       val);
++		}
++	}
++
++	if (!nargv[1] || !nargv[2] || !nargv[5] || !nargv[7] || !nargv[8]) {
++		errstr = "Missing argument";
++		goto err;
++	}
++
++	if (nargv[11]) {
++		nargv[10] = "1";
++		nargc = 12;
++	}
++
++	*pargc = nargc;
++	*pargv = nargv;
++	return NULL;
++
++err:
++	kfree(nargv);
++	kfree(hashstart);
++	return errstr;
++}
++
++static void verity_free_chromeos_argv(char **argv)
++{
++	if (argv) {
++		kfree(argv[5]);
++		kfree(argv);
++	}
++}
++
++/*
+  * Target parameters:
+  *	<version>	The current format is version 1.
+  *			Vsn 0 is compatible with original Chromium OS releases.
+@@ -1423,10 +1542,20 @@
+ 	sector_t hash_position;
+ 	char dummy;
+ 	char *root_hash_digest_to_validate;
++	char **chromeos_argv = NULL;
++
++	/* CHROMIUM: translate ChromeOS-style key=value verity tables */
++	if (argc < 10) {
++		ti->error = verity_chromeos_args(&argc, &argv);
++		if (ti->error)
++			return -EINVAL;
++		chromeos_argv = argv;
++	}
+ 
+ 	v = kzalloc_obj(struct dm_verity);
+ 	if (!v) {
+ 		ti->error = "Cannot allocate verity structure";
++		verity_free_chromeos_argv(chromeos_argv);
+ 		return -ENOMEM;
+ 	}
+ 	ti->private = v;
+@@ -1663,6 +1792,7 @@
+ 
+ 	dm_audit_log_ctr(DM_MSG_PREFIX, ti, 1);
+ 
++	verity_free_chromeos_argv(chromeos_argv);
+ 	return 0;
+ 
+ bad:
+@@ -1671,6 +1801,7 @@
+ 	dm_audit_log_ctr(DM_MSG_PREFIX, ti, 0);
+ 	verity_dtr(ti);
+ 
++	verity_free_chromeos_argv(chromeos_argv);
+ 	return r;
+ }
+ 
