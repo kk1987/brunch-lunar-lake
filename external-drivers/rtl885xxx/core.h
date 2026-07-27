@@ -86,7 +86,7 @@ extern const struct ieee80211_ops rtw89_ops;
 
 #endif
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 9, 0)
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 9, 0) && !defined(RTW89_KERNEL_HAS_IEEE80211_GET_SN)
 static inline u16 ieee80211_get_sn(struct ieee80211_hdr *hdr)
 {
 	return le16_get_bits(hdr->seq_ctrl, IEEE80211_SCTL_SEQ);

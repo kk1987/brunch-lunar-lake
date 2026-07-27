@@ -31,6 +31,22 @@ EXTRA_CFLAGS += -DGIT_COMMIT=08b8d326937a200a706ec9c501374eec15835b5a
 ccflags-y += -Wno-compare-distinct-pointer-types
 KEY_FILE ?= MOK.der
 
+# ChromeOS kernels backport newer mac80211 APIs while still reporting an old
+# LINUX_VERSION_CODE (chromeos-6.6 carries the 6.9 chanreq rework but not the
+# 6.9 csa_finish link_id change), so version checks alone mis-select the
+# compat shims.  Probe the kernel headers and let the affected #if sites OR
+# these results in.  $(srctree) is only set during the kbuild descent.
+RTW89_MAC80211_H := $(srctree)/include/net/mac80211.h
+RTW89_IEEE80211_H := $(srctree)/include/linux/ieee80211.h
+ifneq (,$(wildcard $(RTW89_MAC80211_H)))
+ifneq (,$(shell grep -m1 "struct ieee80211_chan_req chanreq;" $(RTW89_MAC80211_H)))
+ccflags-y += -DRTW89_KERNEL_HAS_CHANREQ
+endif
+ifneq (,$(shell grep -m1 "ieee80211_get_sn" $(RTW89_IEEE80211_H)))
+ccflags-y += -DRTW89_KERNEL_HAS_IEEE80211_GET_SN
+endif
+endif
+
 obj-m += rtw89core.o
 rtw89core-y +=  core.o \
 		mac80211.o \
