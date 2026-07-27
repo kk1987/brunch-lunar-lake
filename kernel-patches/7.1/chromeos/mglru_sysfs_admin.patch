@@ -1,0 +1,154 @@
+CHROMIUM: mm: multi-gen LRU: sysfs admin interface
+
+ChromeOS userspace (vm_concierge VM memory management service) reads and
+polls /sys/kernel/mm/lru_gen/admin for MGLRU generation stats; without it
+vm_concierge CHECK-fails on startup ("Failed to open MGLRU admin file")
+and crash-loops after login. Production ChromeOS kernels carry a private
+sysfs clone of the debugfs lru_gen interface; this ports the read side
+(the CrOS file is 0444, userspace never writes it) to the vanilla tree,
+emitting the same short format as debugfs lru_gen, truncated to
+PAGE_SIZE. Aging notifies pollers via kernfs_notify.
+
+--- a/mm/vmscan.c
++++ b/mm/vmscan.c
+@@ -2624,6 +2624,12 @@
+ 
+ #ifdef CONFIG_LRU_GEN
+ 
++/*
++ * CHROMIUM: kernfs node of /sys/kernel/mm/lru_gen/admin, notified on aging so
++ * userspace (vm_concierge) can poll for generation changes.
++ */
++static struct kernfs_node *lru_gen_admin_node;
++
+ DEFINE_STATIC_KEY_FALSE(lru_switch);
+ #ifdef CONFIG_LRU_GEN_ENABLED
+ DEFINE_STATIC_KEY_ARRAY_TRUE(lru_gen_caps, NR_LRU_GEN_CAPS);
+@@ -3997,6 +4003,10 @@
+ unlock:
+ 	lruvec_unlock_irq(lruvec);
+ 
++	/* CHROMIUM: wake up /sys/kernel/mm/lru_gen/admin pollers on aging */
++	if (success && lru_gen_admin_node)
++		kernfs_notify(lru_gen_admin_node);
++
+ 	return success;
+ }
+ 
+@@ -5434,9 +5444,97 @@
+ 
+ static struct kobj_attribute lru_gen_enabled_attr = __ATTR_RW(enabled);
+ 
++/*
++ * CHROMIUM: read-only sysfs clone of the debugfs lru_gen file. ChromeOS
++ * userspace (vm_concierge's VM memory management service) reads and polls
++ * /sys/kernel/mm/lru_gen/admin instead of debugfs, which production ChromeOS
++ * kernels do not mount. Ported from the chromeos-6.6 tree; output format
++ * matches the vanilla debugfs "lru_gen" file, truncated to PAGE_SIZE as
++ * sysfs requires.
++ */
++static __printf(3, 4) int lru_gen_admin_emit(char *buf, int at,
++					     const char *fmt, ...)
++{
++	va_list args;
++	int len;
++
++	if (at < 0 || at >= PAGE_SIZE)
++		return 0;
++
++	va_start(args, fmt);
++	len = vscnprintf(buf + at, PAGE_SIZE - at, fmt, args);
++	va_end(args);
++
++	return len;
++}
++
++static ssize_t admin_show(struct kobject *kobj, struct kobj_attribute *attr,
++			  char *buf)
++{
++	int len = 0;
++	struct mem_cgroup *memcg;
++	char *path = kvmalloc(PATH_MAX, GFP_KERNEL);
++
++	if (!path)
++		return -ENOMEM;
++
++	memcg = mem_cgroup_iter(NULL, NULL, NULL);
++	do {
++		int nid;
++
++		for_each_node_state(nid, N_MEMORY) {
++			unsigned long seq;
++			struct lruvec *lruvec = mem_cgroup_lruvec(memcg, NODE_DATA(nid));
++			struct lru_gen_folio *lrugen = &lruvec->lrugen;
++			DEFINE_MAX_SEQ(lruvec);
++			DEFINE_MIN_SEQ(lruvec);
++
++			if (nid == first_memory_node) {
++				path[0] = '\0';
++#ifdef CONFIG_MEMCG
++				if (memcg)
++					cgroup_path(memcg->css.cgroup, path, PATH_MAX);
++#endif
++				len += lru_gen_admin_emit(buf, len, "memcg %llu %s\n",
++							  mem_cgroup_id(memcg), path);
++			}
++
++			len += lru_gen_admin_emit(buf, len, " node %5d\n", nid);
++
++			for (seq = evictable_min_seq(min_seq, MAX_SWAPPINESS / 2);
++			     seq <= max_seq; seq++) {
++				int type, zone;
++				int gen = lru_gen_from_seq(seq);
++				unsigned long birth = READ_ONCE(lrugen->timestamps[gen]);
++
++				len += lru_gen_admin_emit(buf, len, " %10lu %10u", seq,
++							  jiffies_to_msecs(jiffies - birth));
++
++				for (type = 0; type < ANON_AND_FILE; type++) {
++					unsigned long size = 0;
++
++					for (zone = 0; zone < MAX_NR_ZONES; zone++)
++						size += max(READ_ONCE(lrugen->nr_pages[gen][type][zone]), 0L);
++
++					len += lru_gen_admin_emit(buf, len, " %10lu ", size);
++				}
++
++				len += lru_gen_admin_emit(buf, len, "\n");
++			}
++		}
++	} while ((memcg = mem_cgroup_iter(NULL, memcg, NULL)));
++
++	kvfree(path);
++
++	return len;
++}
++
++static struct kobj_attribute lru_gen_admin_attr = __ATTR_RO(admin);
++
+ static struct attribute *lru_gen_attrs[] = {
+ 	&lru_gen_min_ttl_attr.attr,
+ 	&lru_gen_enabled_attr.attr,
++	&lru_gen_admin_attr.attr,
+ 	NULL
+ };
+ 
+@@ -5886,8 +5984,17 @@
+ 	BUILD_BUG_ON(MIN_NR_GENS + 1 >= MAX_NR_GENS);
+ 	BUILD_BUG_ON(BIT(LRU_GEN_WIDTH) <= MAX_NR_GENS);
+ 
+-	if (sysfs_create_group(mm_kobj, &lru_gen_attr_group))
++	if (sysfs_create_group(mm_kobj, &lru_gen_attr_group)) {
+ 		pr_err("lru_gen: failed to create sysfs group\n");
++	} else {
++		/* CHROMIUM: cache the admin node for kernfs_notify() on aging */
++		struct kernfs_node *tmp = kernfs_find_and_get(mm_kobj->sd, "lru_gen");
++
++		if (tmp) {
++			lru_gen_admin_node = kernfs_find_and_get(tmp, "admin");
++			kernfs_put(tmp);
++		}
++	}
+ 
+ 	debugfs_create_file_aux_num("lru_gen", 0644, NULL, NULL, false,
+ 				    &lru_gen_rw_fops);
