@@ -1,0 +1,113 @@
+# Extra config for the 7.1 (vanilla kernel.org) brunch kernel.
+#
+# Appended after brunch_configs by prepare_kernels.sh, so entries here win.
+# The baseline is 7.1_base_config (a hardware-proven Arch Linux config), which
+# is a distro config and not a ChromeOS one - so most of what follows is either
+# a ChromeOS userspace requirement the distro config does not have, or a Lunar
+# Lake platform driver.
+
+# --- Lunar Lake (Xe2) platform ---
+
+# xe driver for Lunar Lake and newer Intel graphics
+CONFIG_DRM_XE=m
+CONFIG_DRM_XE_DISPLAY=y
+
+# Lunar Lake pinctrl/GPIO (ACPI-enumerated platform driver, INTC10xx)
+CONFIG_PINCTRL_INTEL_PLATFORM=m
+
+# HDA side-codec amplifiers used on LNL-generation laptops
+# (cs35l41 on e.g. HP OmniBook X Flip)
+CONFIG_SND_HDA_SCODEC_CS35L41_I2C=m
+CONFIG_SND_HDA_SCODEC_CS35L41_SPI=m
+CONFIG_SND_HDA_SCODEC_CS35L56_I2C=m
+CONFIG_SND_HDA_SCODEC_CS35L56_SPI=m
+CONFIG_SND_HDA_SCODEC_TAS2781_I2C=m
+
+# Intel MIPI camera IPU and its visual sensing controller companion
+CONFIG_VIDEO_INTEL_IPU6=m
+CONFIG_INTEL_MEI_VSC_HW=m
+CONFIG_INTEL_MEI_VSC=m
+CONFIG_INTEL_VSC=m
+
+# Override the upstream brunch_configs INTEL_IOMMU disable: Lunar Lake firmware
+# hands over the CPU in locked-x2APIC mode, and without the Intel IOMMU/DMAR
+# interrupt-remapping implementation the kernel panics before any console
+# exists (black screen, reboot after the panic= timeout). Verified on HP
+# OmniBook X Flip (Core Ultra 9 288V): the identical kernel boots with these
+# on and dies without them. DMA remapping stays off by default (no
+# INTEL_IOMMU_DEFAULT_ON), matching Arch's shipping config.
+CONFIG_INTEL_IOMMU=y
+CONFIG_INTEL_IOMMU_SVM=y
+CONFIG_IRQ_REMAP=y
+
+# Early boot console: use the sysfb simple-framebuffer + simpledrm (fast,
+# shadow-buffered fbcon) instead of efifb. On Lunar Lake laptops efifb writes
+# the GOP framebuffer through an uncached mapping, which slows every printk
+# line to seconds and renders with broken geometry (unusable boot console).
+CONFIG_SYSFB_SIMPLEFB=y
+CONFIG_DRM_SIMPLEDRM=y
+
+# --- ChromeOS userspace requirements ---
+
+# cgroup v1 interfaces: split into dedicated options in newer kernels and
+# default-off; ChromeOS mounts cpuset/memory as cgroup v1 - without these,
+# minijail-pinned services (cras, session_manager user sessions, avahi) abort.
+CONFIG_CPUSETS_V1=y
+CONFIG_MEMCG=y
+CONFIG_MEMCG_V1=y
+
+# ARC binder
+CONFIG_ANDROID_BINDER_IPC=y
+CONFIG_ANDROID_BINDERFS=y
+CONFIG_ANDROID_BINDER_DEVICES="binder,hwbinder,vndbinder"
+
+CONFIG_OVERLAY_FS=y
+
+# ChromeOS mounts DLC images (Crostini termina, cras noise cancellation, ...)
+# through imageloader, which stacks dm-verity on a loop device. Align with the
+# CrOS production config (base.config: BLK_DEV_DM=y DM_VERITY=y): builtin, so
+# no module load ordering is involved and a kernel update stays a single-file
+# bzImage swap. ChromeOS-format verity table support itself is
+# kernel-patches/7.1/chromeos/dm_verity_chromeos_table.patch.
+CONFIG_BLK_DEV_DM=y
+CONFIG_DM_VERITY=y
+
+# LSM list for the vanilla tree (no chromiumos LSM upstream); selinux must be
+# active or selinuxfs does not register and ChromeOS upstart panics.
+CONFIG_LSM="landlock,lockdown,yama,loadpin,safesetid,integrity,selinux,bpf"
+CONFIG_DEFAULT_SECURITY_SELINUX=y
+
+# Keep the kernel off the TPM2 HMAC session machinery (default n, pinned here;
+# aligns with the brunch 6.x kernels - /dev/tpm0 is the swtpm vtpm-proxy).
+# CONFIG_TCG_TPM2_HMAC is not set
+
+# The Arch baseline sets CONFIG_DEFAULT_HOSTNAME="archlinux". ChromeOS
+# userspace never calls sethostname, so the kernel default leaks all the way to
+# the developer console login prompt ("archlinux login:").
+CONFIG_DEFAULT_HOSTNAME="localhost"
+
+# --- brunch initramfs ---
+
+# These have to be builtin: no modules are available before the rootfs is up.
+CONFIG_BLK_DEV_LOOP=y
+CONFIG_BLK_DEV_NVME=y
+CONFIG_NVME_CORE=y
+CONFIG_EXT4_FS=y
+CONFIG_BTRFS_FS=y
+CONFIG_FAT_FS=y
+CONFIG_VFAT_FS=y
+CONFIG_EXFAT_FS=y
+CONFIG_NLS_CODEPAGE_437=y
+CONFIG_NLS_ISO8859_1=y
+CONFIG_NLS_ASCII=y
+# ntfs-3g in the initramfs is FUSE-based (dualboot from NTFS hosts)
+CONFIG_FUSE_FS=y
+
+# --- packaging ---
+
+# never lose the running config again
+CONFIG_IKCONFIG=y
+CONFIG_IKCONFIG_PROC=y
+# match brunch module/packaging conventions
+# CONFIG_MODULE_SIG is not set
+# CONFIG_LOCALVERSION_AUTO is not set
