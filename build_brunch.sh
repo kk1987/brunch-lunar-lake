@@ -75,7 +75,17 @@ chmod 0755 ./chroot/home/chronos/initramfs/init || { echo "Failed to change init
 chown -R 1000:1000 ./chroot/home/chronos/initramfs || { echo "Failed to fix initramfs directory ownership"; exit 1; }
 
 mkdir ./chroot/home/chronos/rootc || { echo "Failed to create rootc directory"; exit 1; }
-ln -s kernel-6.12 ./chroot/home/chronos/rootc/kernel || { echo "Failed to make the default kernel symlink"; exit 1; }
+# settings.cfg ships kernel="/kernel", so this symlink is what the default grub
+# entry boots. 6.12 stays the default whenever it was built; a partial build
+# (BRUNCH_KERNELS) falls back to the newest generic kernel present, rather than
+# leaving a dangling symlink that fails to boot before brunch-setup is run.
+default_kernel="6.12"
+if [ ! -d "./kernels/$default_kernel" ]; then
+	default_kernel="$(echo "$kernels" | tr ' ' '\n' | grep -v '^chromebook-' | sort -V | tail -1)"
+	[ ! -z "$default_kernel" ] || { echo "No generic kernel found to use as the default"; exit 1; }
+	echo "Kernel 6.12 was not built, defaulting to kernel $default_kernel"
+fi
+ln -s kernel-"$default_kernel" ./chroot/home/chronos/rootc/kernel || { echo "Failed to make the default kernel symlink"; exit 1; }
 ln -s kernel ./chroot/home/chronos/rootc/kernel-4.19 || { echo "Failed to make the legacy kernel symlink"; exit 1; }
 ln -s kernel ./chroot/home/chronos/rootc/kernel-5.4 || { echo "Failed to make the legacy kernel symlink"; exit 1; }
 ln -s kernel ./chroot/home/chronos/rootc/kernel-5.10 || { echo "Failed to make the legacy kernel symlink"; exit 1; }
@@ -86,8 +96,10 @@ ln -s kernel ./chroot/home/chronos/rootc/kernel-chromebook-5.4 || { echo "Failed
 ln -s kernel ./chroot/home/chronos/rootc/kernel-chromebook-5.10 || { echo "Failed to make the legacy kernel symlink"; exit 1; }
 ln -s kernel ./chroot/home/chronos/rootc/kernel-chromebook-5.15 || { echo "Failed to make the legacy kernel symlink"; exit 1; }
 ln -s kernel ./chroot/home/chronos/rootc/kernel-chromebook-6.1 || { echo "Failed to make the legacy kernel symlink"; exit 1; }
-ln -s kernel-chromebook-6.12 ./chroot/home/chronos/rootc/kernel-macbook || { echo "Failed to make the macbook kernel symlink"; exit 1; }
-ln -s kernel-chromebook-6.12 ./chroot/home/chronos/rootc/kernel-macbook-t2 || { echo "Failed to make the macbook kernel symlink"; exit 1; }
+if [ -d ./kernels/chromebook-6.12 ]; then
+	ln -s kernel-chromebook-6.12 ./chroot/home/chronos/rootc/kernel-macbook || { echo "Failed to make the macbook kernel symlink"; exit 1; }
+	ln -s kernel-chromebook-6.12 ./chroot/home/chronos/rootc/kernel-macbook-t2 || { echo "Failed to make the macbook kernel symlink"; exit 1; }
+fi
 cp -r ./packages ./chroot/home/chronos/rootc/ || { echo "Failed to copy brunch packages"; exit 1; }
 cp -r ./brunch-patches ./chroot/home/chronos/rootc/patches || { echo "Failed to copy brunch patches"; exit 1; }
 chmod -R 0755 ./chroot/home/chronos/rootc/patches || { echo "Failed to change patches directory permissions"; exit 1; }
