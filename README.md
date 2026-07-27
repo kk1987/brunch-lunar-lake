@@ -12,7 +12,9 @@ that fill both gaps, plus the ARCVM and audio fixes that fall out of them.
 
 Everything here is additive: on any non-Lunar-Lake machine the 7.1 kernel is simply one
 more entry in the kernel list and none of the LNL patches activate (each one checks the
-iGPU PCI id first). Upstream behaviour on 6.6 / 6.12 is unchanged.
+iGPU PCI id first). Upstream behaviour on 6.6 / 6.12 is unchanged, with one exception:
+the external drivers were brought forward so they also build on 7.1 (see *External
+drivers*), and the 6.6 / 6.12 builds compile the updated driver sources too.
 
 **Status: it works.** OOBE, login, reboot, re-login, Play Store, Android apps and games,
 Crostini, audio and suspend all run on the reference machine. See *Known limitations*
@@ -50,6 +52,22 @@ firmware hands the CPU over in locked-x2APIC mode and the kernel panics before a
 console exists without DMAR interrupt remapping — and the boot console uses
 sysfb/simpledrm rather than efifb, which on these machines maps the GOP framebuffer
 uncached and takes seconds per printk line.
+
+### External drivers (`external-drivers/`)
+
+Upstream brunch builds its 13 out-of-tree modules (Realtek Wi-Fi, broadcom-wl,
+acpi_call, ipts, ithc) only for kernels 6.6 / 6.12, so on 7.1 they were skipped
+entirely. This fork ports all of them to the vanilla 7.1 tree. The recurring breakage:
+kbuild dropped `EXTRA_CFLAGS`, the `del_timer*` / `from_timer` removals, the 6.14
+`link_id` and 6.17 `radio_idx` cfg80211 arguments, 7.1 passing `struct wireless_dev *`
+to the cfg80211 key/station ops, and 7.1 hiding the pppoe flexible-array members from
+kernel code. Where an active upstream already carried the fixes, the vendored copy was
+synced to it (rtl8192eu → Mange, rtl8812au / rtl8821cu → morrownr, rtl885xxx →
+morrownr/rtw89); the rest is version-guarded compat, with per-change provenance in the
+commit messages. All changes are kernel-version-guarded or version-neutral, so the
+6.6 / 6.12 builds keep working (CI exercises them). On 7.1 the in-tree rtw89 already
+covers the rtl885xxx hardware; the external copy is kept so every kernel ships the
+same module set.
 
 ### Mesa 25.3.6 userspace (`mesa-patches/`, `packages/mesa-lnl.tar.gz`, `85-mesa_lnl.sh`)
 
