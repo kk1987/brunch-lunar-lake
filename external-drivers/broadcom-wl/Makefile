@@ -117,15 +117,15 @@ GCCVERSION := $(subst $(space),$(empty),$(GCCVERSION))
 GCCVERSION := $(shell expr `echo $(GCCVERSION)` | cut -b1-3)
 GE_49 := $(shell expr `echo $(GCCVERSION)` \>= 490)
 
-EXTRA_CFLAGS :=
+ccflags-y :=
 
 ifeq ($(APIFINAL),CFG80211)
-  EXTRA_CFLAGS += -DUSE_CFG80211
+  ccflags-y += -DUSE_CFG80211
   $(info Using CFG80211 API)
 endif
 
 ifeq ($(APIFINAL),WEXT)
-  EXTRA_CFLAGS += -DUSE_IW
+  ccflags-y += -DUSE_IW
   $(info Using Wireless Extension API)
 endif
 
@@ -137,15 +137,15 @@ wl-objs            += src/wl/sys/wl_linux.o
 wl-objs            += src/wl/sys/wl_iw.o
 wl-objs            += src/wl/sys/wl_cfg80211_hybrid.o
 
-EXTRA_CFLAGS       += -I$(src)/src/include -I$(src)/src/common/include
-EXTRA_CFLAGS       += -I$(src)/src/wl/sys -I$(src)/src/wl/phy -I$(src)/src/wl/ppr/include
-EXTRA_CFLAGS       += -I$(src)/src/shared/bcmwifi/include
-#EXTRA_CFLAGS       += -DBCMDBG_ASSERT -DBCMDBG_ERR
+ccflags-y          += -I$(src)/src/include -I$(src)/src/common/include
+ccflags-y          += -I$(src)/src/wl/sys -I$(src)/src/wl/phy -I$(src)/src/wl/ppr/include
+ccflags-y          += -I$(src)/src/shared/bcmwifi/include
+#ccflags-y          += -DBCMDBG_ASSERT -DBCMDBG_ERR
 ifeq "$(GE_49)" "1"
-EXTRA_CFLAGS       += -Wno-date-time
+ccflags-y          += -Wno-date-time
 endif
 
-EXTRA_LDFLAGS      := $(src)/lib/wlc_hybrid.o_shipped
+ldflags-y          := $(src)/lib/wlc_hybrid.o_shipped
 
 KBASE              ?= /lib/modules/`uname -r`
 KBUILD_DIR         ?= $(KBASE)/build
@@ -154,6 +154,21 @@ MDEST_DIR          ?= $(KBASE)/kernel/drivers/net/wireless
 # Cross compile setup.  Tool chain and kernel tree, replace with your own.
 CROSS_TOOLS        = /path/to/tools
 CROSS_KBUILD_DIR   = /path/to/kernel/tree
+
+# Rel. commit "objtool: Always fail on fatal errors" (Josh Poimboeuf, 31 Mar 2025)
+# This is a *ugly* hack to disable objtool during the final processing of wl.o.
+# Since is embeds the proprietary blob (wlc_hybrid.o_shipped), objtool can't
+# process it, as it does not follow the requirements of current kernels,
+# including support for critical security features. As of Linux v6.15+, it causes
+# a build error. Disable it, at your own risk. Note the MIT license applies:
+# THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+wl.o: override objtool-enabled =
 
 all:
 	KBUILD_NOPEDANTIC=1 make -C ../kernel O=out M=`pwd`

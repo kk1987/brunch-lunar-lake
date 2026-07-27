@@ -167,6 +167,8 @@ static int wl_set_radio_block(void *data, bool blocked);
 static void wl_report_radio_state(wl_info_t *wl);
 #endif
 
+// Rel. commit "modpost: require a MODULE_DESCRIPTION()" (Jeff Johnson, 11 Mar 2025)
+MODULE_DESCRIPTION("Broadcom-wl wireless driver [unmaintained, out-of-tree]");
 MODULE_LICENSE("MIXED/Proprietary");
 
 static struct pci_device_id wl_id_table[] =
@@ -919,6 +921,10 @@ static struct pci_driver wl_pci_driver __refdata = {
 static int __init
 wl_module_init(void)
 {
+	printk(KERN_WARNING "You are using the broadcom-wl driver, which is not "
+		"maintained and is incompatible with Linux kernel security mitigations. "
+		"It is heavily recommended to replace the hardware and remove the driver. "
+		"Proceed at your own risk!");
 	int error = -ENODEV;
 
 #ifdef BCMDBG
@@ -2373,7 +2379,10 @@ wl_timer(
 #endif
 ) {
 	wl_timer_t *t =
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 15, 0)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 16, 0)
+		/* Rel. commit "timers: Rename from_timer() to timer_container_of()" (Ingo Molnar, 8 May 2025) */
+		timer_container_of(t, tl, timer);
+#elif LINUX_VERSION_CODE >= KERNEL_VERSION(4, 15, 0)
 		from_timer(t, tl, timer);
 #else
 		(wl_timer_t *)data;
@@ -2479,7 +2488,12 @@ wl_del_timer(wl_info_t *wl, wl_timer_t *t)
 	ASSERT(t);
 	if (t->set) {
 		t->set = FALSE;
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 15, 0)
+		// Rel. commit "treewide: Switch/rename to timer_delete[_sync]()" (Thomas Gleixner, 5 Apr 2025)
+		if (!timer_delete(&t->timer)) {
+#else
 		if (!del_timer(&t->timer)) {
+#endif
 #ifdef BCMDBG
 			WL_INFORM(("wl%d: Failed to delete timer %s\n", wl->unit, t->name));
 #endif
