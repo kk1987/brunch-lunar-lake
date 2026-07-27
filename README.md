@@ -124,12 +124,36 @@ sudo bash build_brunch.sh <recovery_image.bin>
 `BRUNCH_KERNELS="7.1" ./prepare_kernels.sh` to save a lot of time while iterating.
 
 GitHub Actions builds the whole thing on push (`.github/workflows/build.yml`) and picks
-up 7.1 automatically. A fork without the `BRUNCH_PRIV` / `BRUNCH_PEM` secrets set will
-produce **unsigned** kernels, which boot fine but cannot be used with Secure Boot.
+up 7.1 automatically. Release kernels are signed with this fork's own key (see *Secure
+Boot* below); a fork without the `BRUNCH_PRIV` / `BRUNCH_PEM` secrets set will produce
+**unsigned** kernels, which boot fine but cannot be used with Secure Boot.
 
 Pick `7.1` in `brunch-setup` at install time. The Lunar Lake patches then activate on
 their own; `no_lnl_mesa`, `no_lnl_audio_fw` and `no_arcvm_seccomp` turn them off
 individually.
+
+## Secure Boot
+
+The boot chain is: Microsoft-signed Debian shim (`bootx64.efi`) → GRUB, signed by
+upstream brunch's key → kernel, signed by **this fork's** key (upstream cannot share its
+private key, so forks sign kernels themselves). Two certificates therefore have to be
+enrolled in MOK, and both ship at the root of the EFI partition:
+
+- `brunch.der` — upstream brunch's certificate, verifies GRUB
+- `brunch-lnl.der` — this fork's certificate, verifies the kernels
+
+Enroll them either from a Linux system:
+
+```sh
+sudo mokutil --import brunch.der
+sudo mokutil --import brunch-lnl.der
+```
+
+or directly at the blue "Verification failed" screen on the first Secure Boot boot:
+OK → Enroll key from disk → EFI-SYSTEM → select each `.der` in turn → Continue, reboot.
+
+With Secure Boot disabled none of this matters — unsigned or differently-signed kernels
+boot normally.
 
 ## Known limitations
 
