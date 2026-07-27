@@ -237,7 +237,7 @@ static void ithc_stop(void *res)
 	else
 		ithc_legacy_exit(ithc);
 	ithc_disable(ithc);
-	del_timer_sync(&ithc->idle_timer);
+	timer_delete_sync(&ithc->idle_timer);
 
 	// Clear DMA config.
 	for (unsigned int i = 0; i < 2; i++) {
