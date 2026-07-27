@@ -44,12 +44,18 @@ if [ "$lnl_mesa" -eq 1 ]; then
 	# with stderr logging chrome never opens a post-login log file, but the
 	# session log redirect path still calls fileno() on the NULL log handle and
 	# the browser process segfaults on every login (including guest).
+	# --disable-gpu-sandbox is required: inside the sandbox Mesa 25.3.6 cannot
+	# bring up EGL (ui.LATEST: "Display::initialize error 12289: Failed to get
+	# system egl display") and chrome crash-loops before login. 82-features.sh's
+	# --gpu-sandbox-failures-fatal=no does not cover this: it tolerates sandbox
+	# *setup* failures, not EGL failing inside an established sandbox.
 	cat >>/roota/etc/chrome_dev.conf <<CHROMEFLAGS
 
 # mesa-lnl (Lunar Lake): force ANGLE on native GL (iris), see brunch 85-mesa_lnl.sh
 --use-angle=gl
 --use-cmd-decoder=passthrough
 --ignore-gpu-blocklist
+--disable-gpu-sandbox
 CHROMEFLAGS
 	if [ ! "$?" -eq 0 ]; then ret=$((ret + (2 ** 1))); fi
 fi

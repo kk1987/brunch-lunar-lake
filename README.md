@@ -133,9 +133,11 @@ individually.
 
 ## Known limitations
 
-- **ChromeOS R150+ is not supported.** Everything here was developed against R149. The
-  Mesa package and the crosvm seccomp policies are both tied to what that image ships;
-  they will need revisiting for a newer recovery image.
+- **ChromeOS R150: ARCVM does not start.** Everything here was developed against R149.
+  Upgrading the reference machine to R150 works — hardware, login, Crostini and the Mesa
+  override all behave — except Android, which hangs at "Starting Play Store…": the
+  crosvm seccomp policy replacement (`87-arcvm_seccomp.sh`) is generated against the
+  R149 image and needs revisiting for R150's crosvm.
 - **One machine.** Verified on a single laptop model. The 7.1 kernel config comes from
   an Arch baseline, so hardware Arch does not enable is not covered.
 - `mesa-patches/0003` and `0004` de-advertise the Xe2 CCS DRM modifiers to any importer.
