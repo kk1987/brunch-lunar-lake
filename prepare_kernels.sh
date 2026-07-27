@@ -17,18 +17,37 @@ make_config()
 sed -i -z 's@# Detect buggy gcc and clang, fixed in gcc-11 clang-14.\n\tdef_bool@# Detect buggy gcc and clang, fixed in gcc-11 clang-14.\n\tdef_bool $(success,echo 0)\n\t#def_bool@g' ./kernels/$1/init/Kconfig
 sed -i 's@#!/usr/bin/awk@#!/usr/bin/env -S awk@g' ./kernels/$1/scripts/ld-version.sh
 echo "Creating $2 config for kernel $1"
+if [ -f ./kernel-patches/${1}_base_config ]; then
+	# Hardware-proven distro baseline config (e.g. Arch) vendored in the repo:
+	# used instead of the flex/CrOS assembly, then overlaid with brunch_configs
+	# and the per-kernel extra configs below.
+	sed '/CONFIG_LSM\|CONFIG_MODULE_COMPRESS\|CONFIG_LOCALVERSION\|CONFIG_MODULE_SIG\|CONFIG_EXTRA_FIRMWARE\|CONFIG_DEBUG_INFO/d' ./kernel-patches/${1}_base_config > ./kernels/$1/arch/x86/configs/chromeos_defconfig || { echo "Kernel $1 configuration failed"; exit 1; }
+else
 sed '/CONFIG_ATH\|CONFIG_BUILD\|CONFIG_EXTRA_FIRMWARE\|CONFIG_DEBUG_INFO\|CONFIG_IWL\|CONFIG_LSM\|CONFIG_MODULE_COMPRESS/d' ./kernel-patches/flex_configs > ./kernels/$1/arch/x86/configs/chromeos_defconfig || { echo "Kernel $1 configuration failed"; exit 1; }
-if [ "$2" == "generic" ]; then
+fi
+if [ "$2" == "generic" ] && [ ! -f ./kernel-patches/${1}_base_config ]; then
 	make -C ./kernels/$1 O=out allmodconfig || { echo "Kernel $1 configuration failed"; exit 1; }
 	sed '/CONFIG_ACPI\|CONFIG_ATH\|CONFIG_AXP\|CONFIG_B4\|CONFIG_BACKLIGHT\|CONFIG_BATTERY\|CONFIG_BCM\|CONFIG_BN\|CONFIG_BRCM\|CONFIG_BT\|CONFIG_CEC\|CONFIG_CHARGER\|CONFIG_COMMON\|CONFIG_DW_DMAC\|CONFIG_EXTCON\|CONFIG_FIREWIRE\|CONFIG_FRAMEBUFFER_CONSOLE\|CONFIG_GENERIC\|CONFIG_GPIO\|CONFIG_HID\|CONFIG_I2C\|CONFIG_I4\|CONFIG_IC\|CONFIG_IG\|CONFIG_INPUT\|CONFIG_IWL\|CONFIG_IX\|CONFIG_JOYSTICK\|CONFIG_KEYBOARD\|CONFIG_LEDS\|CONFIG_MANAGER\|CONFIG_MEDIA_CONTROLLER\|CONFIG_MFD\|CONFIG_MMC\|CONFIG_MOUSE\|CONFIG_MT7\|CONFIG_MW\|CONFIG_NFC\|CONFIG_NVME\|CONFIG_PATA\|CONFIG_POWER\|CONFIG_PWM\|CONFIG_REGULATOR\|CONFIG_RMI\|CONFIG_RT\|CONFIG_SATA\|CONFIG_SCSI\|CONFIG_SENSORS\|CONFIG_SND\|CONFIG_SOUNDWIRE\|CONFIG_SPI\|CONFIG_SSB\|CONFIG_TABLET\|CONFIG_THUNDERBOLT\|CONFIG_TOUCHSCREEN\|CONFIG_TPS68470\|CONFIG_TYPEC\|CONFIG_UCSI\|CONFIG_USB\|CONFIG_VIDEO\|CONFIG_W1\|CONFIG_WL/!d' ./kernels/$1/out/.config >> ./kernels/$1/arch/x86/configs/chromeos_defconfig || { echo "Kernel $1 configuration failed"; exit 1; }
 	make -C ./kernels/$1 O=out allyesconfig || { echo "Kernel $1 configuration failed"; exit 1; }
 	sed '/CONFIG_ATA\|CONFIG_CROS\|CONFIG_HOTPLUG\|CONFIG_MDIO\|CONFIG_PERF\|CONFIG_PINCTRL\|CONFIG.*_PMIC\|CONFIG_.*_FF=\|CONFIG_SATA\|CONFIG_SERI\|CONFIG_USB_STORAGE\|CONFIG_USB_XHCI\|CONFIG_USB_OHCI\|CONFIG_USB_EHCI/!d' ./kernels/$1/out/.config >> ./kernels/$1/arch/x86/configs/chromeos_defconfig || { echo "Kernel $1 configuration failed"; exit 1; }
 	sed -i '/_DBG\|_DEBUG\|_MOCKUP\|_NOCODEC\|_ONLY\|_WARNINGS\|TEST\|USB_OTG\|_PLTFM\|_PLATFORM\|_SELFTEST\|_TRACING/d' ./kernels/$1/arch/x86/configs/chromeos_defconfig || { echo "Kernel $1 configuration failed"; exit 1; }
 fi
-sed '/CONFIG_ATH\|CONFIG_DEBUG_INFO\|CONFIG_IWL\|CONFIG_MODULE_COMPRESS\|CONFIG_MOUSE/d' ./kernels/$1/chromeos/config/chromeos/base.config >> ./kernels/$1/arch/x86/configs/chromeos_defconfig || { echo "Kernel $1 configuration failed"; exit 1; }
-sed '/CONFIG_ATH\|CONFIG_DEBUG_INFO\|CONFIG_IWL\|CONFIG_MODULE_COMPRESS\|CONFIG_MOUSE/d' ./kernels/$1/chromeos/config/chromeos/x86_64/common.config >> ./kernels/$1/arch/x86/configs/chromeos_defconfig || { echo "Kernel $1 configuration failed"; exit 1; }
-cat ./kernels/$1/chromeos/config/chromeos/x86_64/chromeos-*.flavour.config | grep '^CONFIG_SND' >> ./kernels/$1/arch/x86/configs/chromeos_defconfig || { echo "Kernel $1 configuration failed"; exit 1; }
+if [ -f ./kernel-patches/${1}_base_config ]; then
+	: # distro baseline config already complete, no CrOS fragments needed
+elif [ -d ./kernels/$1/chromeos/config ]; then
+	sed '/CONFIG_ATH\|CONFIG_DEBUG_INFO\|CONFIG_IWL\|CONFIG_MODULE_COMPRESS\|CONFIG_MOUSE/d' ./kernels/$1/chromeos/config/chromeos/base.config >> ./kernels/$1/arch/x86/configs/chromeos_defconfig || { echo "Kernel $1 configuration failed"; exit 1; }
+	sed '/CONFIG_ATH\|CONFIG_DEBUG_INFO\|CONFIG_IWL\|CONFIG_MODULE_COMPRESS\|CONFIG_MOUSE/d' ./kernels/$1/chromeos/config/chromeos/x86_64/common.config >> ./kernels/$1/arch/x86/configs/chromeos_defconfig || { echo "Kernel $1 configuration failed"; exit 1; }
+	cat ./kernels/$1/chromeos/config/chromeos/x86_64/chromeos-*.flavour.config | grep '^CONFIG_SND' >> ./kernels/$1/arch/x86/configs/chromeos_defconfig || { echo "Kernel $1 configuration failed"; exit 1; }
+else
+	# vanilla kernel.org tree: use the CrOS config fragments vendored in the repo
+	sed '/CONFIG_ATH\|CONFIG_DEBUG_INFO\|CONFIG_IWL\|CONFIG_MODULE_COMPRESS\|CONFIG_MOUSE/d' ./kernel-patches/$1-cros-configs/base.config >> ./kernels/$1/arch/x86/configs/chromeos_defconfig || { echo "Kernel $1 configuration failed"; exit 1; }
+	sed '/CONFIG_ATH\|CONFIG_DEBUG_INFO\|CONFIG_IWL\|CONFIG_MODULE_COMPRESS\|CONFIG_MOUSE/d' ./kernel-patches/$1-cros-configs/common.config >> ./kernels/$1/arch/x86/configs/chromeos_defconfig || { echo "Kernel $1 configuration failed"; exit 1; }
+	grep '^CONFIG_SND' ./kernel-patches/$1-cros-configs/flavours-snd.config >> ./kernels/$1/arch/x86/configs/chromeos_defconfig || { echo "Kernel $1 configuration failed"; exit 1; }
+fi
 cat ./kernel-patches/brunch_configs >> ./kernels/$1/arch/x86/configs/chromeos_defconfig || { echo "Kernel $1 configuration failed"; exit 1; }
+if [ -f ./kernel-patches/${1}_extra_configs ]; then
+	cat ./kernel-patches/${1}_extra_configs >> ./kernels/$1/arch/x86/configs/chromeos_defconfig || { echo "Kernel $1 configuration failed"; exit 1; }
+fi
 echo "CONFIG_LOCALVERSION=\"-$2-brunch-sebanc\"" >> ./kernels/$1/arch/x86/configs/chromeos_defconfig || { echo "Kernel $1 configuration failed"; exit 1; }
 make -C ./kernels/$1 O=out chromeos_defconfig || { echo "Kernel $1 configuration failed"; exit 1; }
 cp ./kernels/$1/out/.config ./kernels/$1/arch/x86/configs/chromeos_defconfig || { echo "Kernel $1 configuration failed"; exit 1; }
@@ -40,6 +59,20 @@ kernel_remote_path="$(git ls-remote https://chromium.googlesource.com/chromiumos
 [ ! "x$kernel_remote_path" == "x" ] || { echo "Remote path not found"; exit 1; }
 echo "kernel_remote_path=$kernel_remote_path"
 for kernel in $kernels; do
+	case "$kernel" in
+		7.1)
+			# vanilla kernel.org source (no ChromiumOS branch exists for this version)
+			kernel_version="$lnl_kernel_version"
+			echo "Downloading vanilla kernel source for kernel $kernel version $kernel_version from https://cdn.kernel.org/pub/linux/kernel/v7.x/linux-$kernel_version.tar.xz"
+			curl -L "https://cdn.kernel.org/pub/linux/kernel/v7.x/linux-$kernel_version.tar.xz" -o "./kernels/linux-$kernel.tar.xz" || { echo "Kernel source download failed"; exit 1; }
+			mkdir "./kernels/$kernel"
+			tar -C "./kernels/$kernel" --strip-components=1 -xf "./kernels/linux-$kernel.tar.xz" || { echo "Kernel $kernel source extraction failed"; exit 1; }
+			rm -f "./kernels/linux-$kernel.tar.xz"
+			apply_patches "$kernel"
+			make_config "$kernel" "generic"
+			continue
+		;;
+	esac
 	kernel_version=$(curl -Ls "https://chromium.googlesource.com/chromiumos/third_party/kernel/+/$kernel_remote_path$kernel/Makefile?format=TEXT" | base64 --decode | sed -n -e 1,4p | sed -e '/^#/d' | cut -d'=' -f 2 | sed -z 's#\n##g' | sed 's#^ *##g' | sed 's# #.#g')
 	echo "kernel_version=$kernel_version"
 	[ ! "x$kernel_version" == "x" ] || { echo "Kernel version not found"; exit 1; }
@@ -69,10 +102,12 @@ for kernel in $kernels; do
 done
 }
 
-rm -rf ./kernels
-mkdir ./kernels
-
 chromeos_version="R151"
-kernels="6.6 6.12"
+kernels="${BRUNCH_KERNELS:-6.6 6.12 7.1}"
+lnl_kernel_version="7.1.5"
+
+for kernel in $kernels; do rm -rf "./kernels/$kernel" "./kernels/chromebook-$kernel"; done
+mkdir -p ./kernels
+
 download_and_patch_kernels
 
