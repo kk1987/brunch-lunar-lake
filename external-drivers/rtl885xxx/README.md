@@ -1,220 +1,208 @@
-rtw89
-===========
-### A repo for the newest Realtek rtw89 codes.
+## The Mission of this Repo:
 
-This repo now contains the code for the Realtek RTW8922AE,  which
-is a Wifi 7 device. It has been tested using a Wifi 6 AP as I do not have access
-to a Wifi 7 model. The driver works very well.
+To code, test and upstream great quality Linux Standards compliant (mac80211) USB WiFi drivers for the Realtek RTW89 driver series.
 
-This repo is current with rtw-next up to April 3, 2024.
+## Compatibility
 
-This branch was created from the version merged into the wireless-next
-repo, which is in the 5.16 kernel. IF YOU USE DRIVERS FROM THIS REPO FOR KERNELS
-5.16+, YOU MUST BLACKLIST THE KERNEL VERSIONS!!!! FAILING TO DO THIS WILL RESULT
-IN ALL MANNER OF STRANGE ERRORS.
+Compatible with **Linux kernel versions 6.6 and newer** as long as your distro hasn't modified any kernel APIs. RHEL and all distros based on RHEL will have modified kernel APIs and are unlikely to be compatible with this driver.
 
-This code will build on any kernel 6.10 and newer as long as the distro has not modified
-any of the kernel APIs. IF YOU RUN UBUNTU, YOU CAN BE ASSURED THAT THE APIs HAVE CHANGED.
-NO, I WILL NOT MODIFY THE SOURCE FOR YOU. YOU ARE ON YOUR OWN!!!!!
+#### Supported chips
+- **USB** : RTL8831BU, RTL8851BU, RTL8832AU, RTL8852AU, RTL8832BU, RTL8852BU
+- **USB** : RTL8832CU, RTL8852CU, RTL8912AU, RTL8922AU
+- **PCIe**: RTL8851BE, RTL8852AE, RTL8852BE(-VS, -VT), RTL8852CE, RTL8922AE(-VS)
 
-Note that if you use this driver on kernels older than 5.15, the enhanced features
-of  wifi 5 and wifi 6 are greatly crippled as the kernel does hot have the capability
-to support the new packet widths and speeds. If you use such a kernel, you might
-as well have an 802.11n (wifi 4) device.
+Note: If you own a USB WiFi adapter with any of the above supported
+chips and your adapter is single-state (no Windows driver on board) and
+single-function (no bluetooth support), please start an issue and post
+the brand, name and chip of your adapter as well as a link to the 
+product. This will allow us to make a list of preferred adapters.
 
-This repository includes drivers for the following cards:
+## Prerequisites
 
-Realtek 8851BE, 8852AE, 8852BE, 8852CE, and 8922AE.
+git, make, gcc, kernel-headers, dkms and mokutil (dkms and mokutil are optional.)
 
-If you are looking for a driver for chips such as
-RTL8188EE, RTL8192CE, RTL8192CU, RTL8192DE, RTL8192EE, RTL8192SE, RTL8723AE, or RTL8723BE,
-these should be provided by your kernel. If not, then you should go to the Backports Project
-(https://backports.wiki.kernel.org/index.php/Main_Page) to obtain the necessary code.
+## Installation Guide
 
-If you have an RTW8822B{E,U,S}, RTW8822C{E,U,S}, RTW8723D{E,U,S}, or RTW8821C{E,U,S}, then
-you should use the drivers at https://github.com/lwfinger/rtw88.git.
+1. Create a clone of this repo in your local machine
 
-### Installation instruction
-##### Requirements
-You will need to install "make", "gcc", "kernel headers", "kernel build essentials", and "git".
+   ```
+   git clone https://github.com/morrownr/rtw89
+   ```
 
-For **Ubuntu**: You can install them with the following command
-```bash
-sudo apt-get update
-sudo apt-get install make gcc linux-headers-$(uname -r) build-essential git
+2. Change the working directory to rtw89
+
+   ```
+   cd rtw89
+   ```
+
+3. Search and remove previously installed out-of-kernel rtw89 drivers. If your system has [Larry's rtw89 driver](https://github.com/lwfinger/rtw89) installed, you must run this command to remove it, or this driver won't work as expected.
+
+   ```
+   sudo make cleanup_target_system
+   ```
+
+4. Build and install the driver
+
+   * _via dkms (Recommended especially if Secure Boot is enabled in your system)_
+
+     ```
+     sudo dkms install $PWD
+     ```
+
+   * _via make (In this way you will have to manually reinstall the driver after each kernel update)_ 
+
+     ```
+     make clean modules && sudo make install
+     ```
+
+5. Install the firmware necessary for the driver
+
+   ```
+   sudo make install_fw
+   ```
+
+6. Copy the configuration file `rtw89.conf` to /etc/modprobe.d/
+   ```
+   sudo cp -v rtw89.conf /etc/modprobe.d/
+   ```
+   
+   Note: The above step will blacklist in-kernel drivers that can conflict with drivers in this repo.
+
+7. Enroll the MOK (Machine Owner Key). This is needed **ONLY IF** [Secure Boot](https://wiki.debian.org/SecureBoot) is enabled in your system. Please see [this guide](https://github.com/dell/dkms?tab=readme-ov-file#secure-boot) for details.
+
+   ```
+   sudo mokutil --import /var/lib/dkms/mok.pub
+   ```
+
+   For Ubuntu-based distro users, run this command instead.
+
+   ```
+   sudo mokutil --import /var/lib/shim-signed/mok/MOK.der
+   ```
+
+## Uninstallation Guide
+
+For users who installed the driver via `DKMS`,
+
+1. Check the version of the rtw89 driver installed in your system.
 ```
-Users of Debian, Ubuntu, and similar (Mint etc) may want to scroll down and follow the DKMS instructions at the end of this document instead.
-
-For **Fedora**: You can install them with the following command
-```bash
-sudo dnf install kernel-headers kernel-devel
-sudo dnf group install "C Development Tools and Libraries"
-```
-For **openSUSE**: Install necessary headers with
-```bash
-sudo zypper install make gcc kernel-devel kernel-default-devel git libopenssl-devel
-```
-For **Arch**: After installing the necessary kernel headers and base-devel,
-```bash
-git clone https://aur.archlinux.org/rtw89-dkms-git.git
-cd rtw89-dkms-git
-makepkg -sri
-```
-If any of the packages above are not found check if your distro installs them like that.
-
-##### Installation
-For all distros:
-```bash
-git clone https://github.com/lwfinger/rtw89.git
-cd rtw89
-make
-sudo make install
-```
-
-##### Installation with module signing for SecureBoot
-For all distros:
-```bash
-git clone https://github.com/lwfinger/rtw89.git
-cd rtw89
-make
-sudo make sign-install
-```
-You will be prompted with a password, please keep it in mind and use it in the next steps.
-Reboot to activate the new installed module.
-In the MOK management screen:
-1. Select "Enroll key" and enroll the key created by above sign-install step
-2. When prompted, enter the password you entered when create sign key. 
-3. If you enter wrong password, your computer won't be bootable. In this case,
-   use the BOOT menu from your BIOS, to boot into your OS then do below steps:
-```bash
-sudo mokutil --reset
-```
-Restart your computer
-Use BOOT menu from BIOS to boot into your OS
-In the MOK management screen, select reset MOK list
-Reboot then retry from the step to make sign-install
-
-##### How to unload/reload a Kernel module
- ```bash
-sudo modprobe -rv rtw_8852ae
-sudo modprobe -rv rtw89core	     #These two statements unload the module
-
-Due to the behavior of the modprobe utility, it takes both to unload.
-
-sudo modprobe -v rtw_8852ae          #This loads the module
-
-A single modprobe call will reload the module.
+sudo dkms status rtw89
 ```
 
-##### Uninstall drivers
-For all distros:
- ```bash
+2. Remove the rtw89 driver and its source code (Change the driver version accordingly)
+```
+sudo dkms remove rtw89/6.15 --all
+```
+```
+sudo rm -rf /usr/src/rtw89-6.15
+```
+
+3. Remove the configuration file
+```
+sudo rm -f /etc/modprobe.d/rtw89.conf
+```
+
+For users who installed the driver via `make`, run these commands in the rtw89 source directory
+```
 sudo make uninstall
 ```
-
-##### Problem with recovery after sleep or hibernation
-Some BIOSs have trouble changing the power state from D3hot to D0. If you have this problem, then
-
-sudo cp suspend_rtw89 /usr/lib/systemd/system-sleep/.
-
-That script will unload the driver before sleep or hibernation, and reload it following resumption.
-
-##### Option configuration
-IMPORTANT: If you have an HP or Lenovo laptop, Their BIOS does not handle the PCIe interface correctly.
-To compensate, run the following command:
-sudo cp 70-rtw89.conf /etc/modprobe.d/.
-Then unload the drivers and reload. You should see the options appended to the end of the rtw89_pci
-or rtw89pci load line.
-
-If it turns out that your system needs one of the other configuration options, then do the following:
-```bash
-sudo nano /etc/modprobe.d/<dev_name>.conf
 ```
-There, enter the line below:
-```bash
-options <driver_name> <<driver_option_name>>=<value>
-```
-The available options for rtw89pci are disable_clkreq, disable_aspm_l1, and disable_aspm_l1ss.
-The available options for rtw89core are debug_mask, and disable_ps_mode.
-
-If after rebooting the wifi still doesn't work, it might mean that it was not loaded.
-To fix that, you will have to manually rebuild `initramfs`. To do that, execute one of the two commands, 
-depending on how old/new your system is.
-
-```bash
-mkinitrd # If you're running an older system
-
-dracut -f --regenerate-all # If you're running a newer system
+sudo rm -f /etc/modprobe.d/rtw89.conf
 ```
 
-After rebuilding `initramfs`, reboot your computer and check if the wifi works properly now.
+## Q&A
 
-Normally, none of these will be needed; however, if you are getting firmware errors, one or both
-of the disable_aspm_* options may help. They are needed when a buggy BIOS fails to implement the
-PCI specs correctly.
+### Q1. Bluetooth is still not working after installing this driver, why?
 
-***********************************************************************************************
+   The `rtw89` driver is the **Wi-Fi** driver for Realtek Wi-Fi 6/7 adapters and has nothing to do with Bluetooth. Open a new issue and share the output of the command `sudo cat /sys/kernel/debug/usb/devices` with us if you run into a Bluetooth problem.
 
-When your kernel changes, then you need to do the following:
-```bash
-cd ~/rtw89
-git pull
-make clean
-make
-sudo make install
-;or
-sudo make sign-install
-```
+### Q2. How to update the driver installed via DKMS?
 
-Remember, this MUST be done whenever you get a new kernel - no exceptions.
+   1. Check the version of the rtw89 driver installed in your system.
+      ```
+      sudo dkms status rtw89
+      ```   
+   2. Remove the rtw89 driver. (Change the driver version accordingly)
+      ```
+      sudo dkms remove rtw89/6.15 --all
+      ```
+      ```
+      sudo rm -rf /usr/src/rtw89-6.15/
+      ```
 
-These drivers will not build for kernels older than 5.8. If you must use an older kernel,
-submit a GitHub issue with a listing of the build errors, but be aware that doing so will
-cripple your device. Without the errors, the issue will be ignored. I am not a mind reader.
+   3. Run this command in the rtw89 source directory to pull the latest code
+      ```
+      git pull
+      ```
 
-When you have problems where the driver builds and loads correctly, but fails to work, a GitHub
-issue is NOT the best place to report it. I have no idea of the internal workings of any of the
-chips, and the Realtek engineers who do will not read these issues. To reach them, send E-mail to
-linux-wireless@vger.kernel.org. Include a detailed description of any messages in the kernel
-logs and any steps that you have taken to analyze or fix the problem. If your description is
-not complete, you are unlikely to get any satisfaction. One other thing - your mail MUST be plain test.
-HTML mail is rejected.
+   4. Build, sign and install the rtw89 driver from the latest code.
+      ```
+      sudo dkms install $PWD
+      ```
 
-# DKMS packaging for debian and derivatives
+### Q3. How to update the driver installed via `make`?
 
-DKMS is commonly used on debian and derivatives, like ubuntu, to streamline building extra kernel modules.  
-By following the instructions below and installing the resulting package, the rtw89 driver will automatically rebuild on kernel updates. Secure boot signing will happen automatically as well, 
-as long as the dkms signing key (usually located at /var/lib/dkms/mok.key) is enrolled. See your distro's secure boot documentation for more details. 
+   1. Run this command in the rtw89 source directory to pull the latest code
+      ```
+       git pull
+      ```
+  
+   2. Rebuild and reinstall the driver from the latest code
+      ```
+      make clean modules && sudo make install
+      ```
 
-Prerequisites:
+### Q4. How to update the firmware in my system?
 
-``` bash
-sudo apt install dh-sequence-dkms debhelper build-essential devscripts git-build-recipe
-```
+   1. Run this command in the rtw89 source directory to pull the latest code and firmware
+      ```
+      git pull
+      ```
 
-This workflow uses devscripts, which has quite a few perl dependencies.  
-You may wish to build inside a chroot to avoid unnecessary clutter on your system. The debian wiki page for [chroot](https://wiki.debian.org/chroot) has simple instructions for debian, which you can adapt to other distros as needed by changing the release codename and mirror url.  
-If you do, make sure to install the package on your host system, as it will fail if you try to install inside the chroot. 
+   2. Update the firmware files in your system
+      ```
+      sudo make install_fw
+      ```
 
-Build and installation
+### Q5. I see my USB Wi-Fi adapter is in Driver CDROM Mode when running `lsusb`, what should I do?
 
-```bash
-# If you've already built as above clean up your workspace or check one out specially (otherwise some temp files can end up in your package)
-git clean -xfd
+Install `usb-modeswitch` (or usb_modeswitch), a tool that can switch your adapter to Wi-Fi mode.
 
-git deborig HEAD
-dpkg-buildpackage -us -uc
-sudo apt install ../rtw89-dkms_1.0.2-3_all.deb 
-```
 
-This will install the package, and build the module for your
-currently active kernel.  You should then be able to `modprobe` as
-above. It will also load automatically on boot.
+### Q6. My computer takes a very long time to boot when the Wi-Fi dongle is pre-inserted, how to fix it?
 
-##### A note regarding firmware
+   1. Copy [usb_storage.conf](https://github.com/morrownr/rtw89/blob/main/usb_storage.conf) to `/etc/modprobe.d/`. This file will tell the culprit `usb_storage` not to touch the Wi-Fi dongles.
+      ```
+      sudo cp usb_storage.conf /etc/modprobe.d/
+      ```
 
-Firmware from userspace is required to use this driver. This package will attempt to pull the firmware in automatically as a Recommends.
-However, if your distro does not provide one of firmware-realtek >= 20230117-1 or linux-firmware >= 20220329.git681281e4-0ubuntu3.10, 
-the driver will fail to load, and dmesg will show an error about a specific missing firmware file. In this case, you can download the firmware files 
-directly from https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/rtw89.
+   2. Regenerate initramfs images. The following command is only applicable to Debian/Ubuntu and their variants. Please consult the manual if you are running other distros.
+      ```
+      sudo update-initramfs -u -k all
+      ```
 
+### Q7. My computer only provides USB 3.x ports. How can I make my USB wireless adapter work in USB 2.0 mode?
+
+   1. Open `/etc/modprobe.d/rtw89.conf` with a text editor.
+
+   2. Change the value of the module parameter `switch_usb_mode` from 'y' to 'n'. Changing this value to 'n' tells the rtw89 driver not to perform USB mode switching, so the USB wireless adapter will work in USB 2.0 mode.
+
+   3. Remove the USB wireless adapter from your computer.
+
+   4. Reboot your computer (or unload the rtw89 driver completely, if you know how).
+
+   5. Plug your USB wireless adapter back into the computer.
+
+   6. Run "lsusb -t" to check what mode the USB wireless adapter is in. 
+
+### Q8. My Realtek PCIe wireless card on a Lenovo or HP laptop is not working well, any solution?
+
+Please try the workaround [here](https://github.com/morrownr/rtw89/issues/98#issuecomment-4619148246)
+
+### Q9. My Realtek PCIe wireless card on an Intel X99 machine doesn't work, how to fix it?
+
+Please apply [this patch](https://github.com/user-attachments/files/29662967/0001-Don-t-enable-36-bit-DMA-address-support-for-Intel-ch.patch) and build/install the patched rtw89 driver.
+
+## The Main Menu for this site contains a lot of information regarding USB WiFi Adapters
+
+https://github.com/morrownr/USB-WiFi

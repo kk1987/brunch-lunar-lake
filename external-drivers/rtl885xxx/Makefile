@@ -26,6 +26,9 @@ endif
 EXTRA_CFLAGS += -O2
 EXTRA_CFLAGS += -DCONFIG_RTW89_DEBUGMSG
 EXTRA_CFLAGS += -DCONFIG_RTW89_DEBUGFS
+# Snapshot of https://github.com/morrownr/rtw89 this source was synced to
+EXTRA_CFLAGS += -DGIT_COMMIT=08b8d326937a200a706ec9c501374eec15835b5a
+ccflags-y += -Wno-compare-distinct-pointer-types
 KEY_FILE ?= MOK.der
 
 obj-m += rtw89core.o
@@ -44,10 +47,12 @@ rtw89core-y +=  core.o \
 		coex.o \
 		ps.o \
 		chan.o \
-		debug.o \
 		ser.o \
-		wow.o \
-		acpi.o
+		acpi.o \
+		util.o \
+		debug.o
+
+rtw89core-$(CONFIG_PM) += wow.o
 
 obj-m += rtw_8851b.o
 rtw_8851b-y := rtw8851b.o \
@@ -67,8 +72,13 @@ rtw_8852a-y := rtw8852a.o \
 obj-m += rtw_8852ae.o
 rtw_8852ae-y := rtw8852ae.o
 
+# rtw8852b_common.o is linked directly into rtw_8852b instead of being a
+# separate rtw_8852b_common module: brunch's build_brunch.sh installs a fixed
+# list of .ko files and would not ship an extra module, which would leave
+# rtw_8852b.ko with unresolvable symbols at runtime.
 obj-m += rtw_8852b.o
 rtw_8852b-y := rtw8852b.o \
+		    rtw8852b_common.o \
 		    rtw8852b_table.o \
 		    rtw8852b_rfk.o \
 		    rtw8852b_rfk_table.o
@@ -85,7 +95,7 @@ rtw_8852c-y := rtw8852c.o \
 obj-m += rtw_8852ce.o
 rtw_8852ce-y := rtw8852ce.o
 
-obj-m += rtw_8922a.o 
+obj-m += rtw_8922a.o
 rtw_8922a-y := rtw8922a.o \
 	       rtw8922a_rfk.o
 
@@ -151,4 +161,3 @@ endif
 	@$(KSRC)/scripts/sign-file sha256 MOK.priv MOK.der rtw_8852ce.ko
 
 sign-install: all sign install
-
