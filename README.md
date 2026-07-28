@@ -28,7 +28,7 @@ before you rely on it.
 ## Reference hardware
 
 Developed and tested on an **HP OmniBook X Flip**, Core Ultra 9 288V, Xe2 `8086:64A0`,
-against the **ChromeOS R149 and R150 volteer** recovery images. Other Lunar Lake
+against the **ChromeOS R149, R150 and R151 volteer** recovery images. Other Lunar Lake
 machines should work — the patches key off the iGPU PCI id (`8086:6420`, `8086:64a0`,
 `8086:64b0`), not off the laptop model — but nothing else has been tried.
 
@@ -172,6 +172,8 @@ boot normally.
 
 ## Known limitations
 
+- **"Sign in with your Android phone" does not work** at OOBE. Sign in with a
+  password instead. Not chased down, and not established as Lunar Lake specific.
 - **ARCVM Play Store can crash once after suspend/resume.** The VM survives (crosvm
   keeps running); a venus GPU context can enter a fatal state on the first resume and
   the Android app using it is dropped, so re-opening it recovers. Timing-dependent and
