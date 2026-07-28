@@ -1,12 +1,17 @@
-# Install an up-to-date crosvm seccomp policy set for ARCVM on Lunar Lake.
+# Neutralize the stale crosvm seccomp filters that kill ARCVM on Lunar Lake.
 #
-# The R149 crosvm binary embeds volteer-era (i915) seccomp policies that predate
-# glibc 2.41 / Mesa 25.3.6 and SIGSYS-kill crosvm worker processes on modern
-# syscalls (fcntl F_DUPFD_QUERY, newfstatat, ...), tearing down ARCVM before the
-# Play Store can start. This wraps /usr/bin/crosvm so every `run` invocation is
-# given --seccomp-policy-dir pointing at a maximally-permissive allowlist
-# (every syscall name the image libminijail recognizes), which keeps minijail's
-# namespace/mount/caps jailing while dropping only the stale syscall filter.
+# The ChromeOS crosvm binary embeds pre-compiled seccomp BPFs built for the
+# volteer image. They lag crosvm's own tube code and SIGSYS-kill the virtio-fs
+# and virtio-gpu device workers on recvfrom/recvmsg, tearing ARCVM down before
+# the Play Store can start. --seccomp-policy-dir does not override these
+# embedded filters for the device workers in the shipped build, and
+# --disable-sandbox is unusable because virtio-fs needs minijail's namespaces.
+#
+# This preloads brunch-noseccomp-shim.so into crosvm for ARCVM `run` only,
+# which turns the seccomp filter installation into a no-op while leaving every
+# other minijail jailing (namespaces, ugid map, caps, rlimits) intact. termina
+# is never wrapped and keeps its stock sandbox. See arcvm-noseccomp/ for the
+# shim source and rationale.
 #
 # Applied automatically when a Lunar Lake iGPU is detected on the PCI bus.
 # The option "arcvm_seccomp" forces it on, "no_arcvm_seccomp" forces it off.
@@ -33,36 +38,37 @@ ret=0
 if [ "$arcvm_seccomp" -eq 1 ]; then
 	echo "brunch: $0 arcvm_seccomp enabled" > /dev/kmsg
 
-	# Install the policy directory (crosvm/*.policy + constants.json + frequency).
-	mkdir -p /roota/usr/share/policy
-	tar zxf /rootc/packages/arcvm-seccomp-policy.tar.gz -C /roota/usr/share/policy
+	# Install the preload shim.
+	mkdir -p /roota/usr/lib64
+	tar zxf /rootc/packages/arcvm-noseccomp-shim.tar.gz -C /roota/usr/lib64
 	if [ ! "$?" -eq 0 ]; then ret=$((ret + (2 ** 0))); fi
+	chmod 0644 /roota/usr/lib64/brunch-noseccomp-shim.so
+	if [ ! "$?" -eq 0 ]; then ret=$((ret + (2 ** 1))); fi
 
-	# Wrap the crosvm binary so `run` gets --seccomp-policy-dir. Idempotent: the
-	# real binary is moved aside to crosvm.bin only once (rebuild starts from a
-	# clean ROOT so crosvm.bin normally does not exist yet).
+	# Wrap the crosvm binary so ARCVM `run` gets the shim preloaded. Idempotent:
+	# the real binary is moved aside to crosvm.bin only once (rebuild starts from
+	# a clean ROOT so crosvm.bin normally does not exist yet).
 	if [ ! -f /roota/usr/bin/crosvm.bin ]; then
 		mv /roota/usr/bin/crosvm /roota/usr/bin/crosvm.bin
-		if [ ! "$?" -eq 0 ]; then ret=$((ret + (2 ** 1))); fi
+		if [ ! "$?" -eq 0 ]; then ret=$((ret + (2 ** 2))); fi
 	fi
 	cat > /roota/usr/bin/crosvm <<'CROSVMWRAP'
 #!/bin/bash
-# brunch-lnl: inject an up-to-date seccomp policy dir for every crosvm `run`
-# (see brunch 87-arcvm_seccomp.sh). The R149 embedded policies SIGSYS-kill
-# workers on modern syscalls, which tears down ARCVM.
-new=()
-injected=0
+# brunch-lnl: preload the no-seccomp shim for ARCVM only (see brunch
+# 87-arcvm_seccomp.sh). The embedded seccomp BPFs SIGSYS-kill ARCVM device
+# workers on recvfrom/recvmsg; the shim no-ops filter installation while
+# keeping minijail's namespace/caps jailing. termina keeps its stock sandbox.
+arcvm=0
 for a in "$@"; do
-  new+=("$a")
-  if [[ "$a" == run && $injected == 0 ]]; then
-    new+=(--seccomp-policy-dir /usr/share/policy/crosvm)
-    injected=1
-  fi
+  case "$a" in ARCVM*) arcvm=1 ;; esac
 done
-exec /usr/bin/crosvm.bin "${new[@]}"
+if [[ $arcvm == 1 ]]; then
+  export LD_PRELOAD="/usr/lib64/brunch-noseccomp-shim.so${LD_PRELOAD:+:$LD_PRELOAD}"
+fi
+exec /usr/bin/crosvm.bin "$@"
 CROSVMWRAP
-	if [ ! "$?" -eq 0 ]; then ret=$((ret + (2 ** 2))); fi
-	chmod 0755 /roota/usr/bin/crosvm
 	if [ ! "$?" -eq 0 ]; then ret=$((ret + (2 ** 3))); fi
+	chmod 0755 /roota/usr/bin/crosvm
+	if [ ! "$?" -eq 0 ]; then ret=$((ret + (2 ** 4))); fi
 fi
 exit $ret

@@ -28,9 +28,9 @@ before you rely on it.
 ## Reference hardware
 
 Developed and tested on an **HP OmniBook X Flip**, Core Ultra 9 288V, Xe2 `8086:64A0`,
-against the **ChromeOS R149 volteer** recovery image. Other Lunar Lake machines should
-work — the patches key off the iGPU PCI id (`8086:6420`, `8086:64a0`, `8086:64b0`), not
-off the laptop model — but nothing else has been tried.
+against the **ChromeOS R149 and R150 volteer** recovery images. Other Lunar Lake
+machines should work — the patches key off the iGPU PCI id (`8086:6420`, `8086:64a0`,
+`8086:64b0`), not off the laptop model — but nothing else has been tried.
 
 ## What this fork adds
 
@@ -106,10 +106,15 @@ are upstream bugs, not brunch ones:
 3. **Every ARC window rendered as vertical stripe noise** — ANV placing bos in
    compressed PAT memory, which is broken under an ARCVM guest. (`mesa-patches/0006`)
 
-`87-arcvm_seccomp.sh` additionally replaces the crosvm seccomp policies: the R149 crosvm
-binary embeds volteer-era policies that predate glibc 2.41 and Mesa 25.3.6, and
-SIGSYS-kill crosvm workers on `fcntl(F_DUPFD_QUERY)`, `newfstatat` and friends before
-the Play Store can start.
+`87-arcvm_seccomp.sh` additionally neutralizes the crosvm seccomp filters. The ChromeOS
+crosvm binary embeds pre-compiled seccomp BPFs built for the volteer image; they lag
+crosvm's own tube code and SIGSYS-kill the virtio-fs/gpu device workers on
+`recvfrom`/`recvmsg`, tearing ARCVM down before the Play Store can start.
+`--seccomp-policy-dir` does not override these embedded filters for the device workers
+in the shipped build, so the patch preloads a small shim (`arcvm-noseccomp/`) into
+crosvm for ARCVM only that no-ops the seccomp filter installation while leaving every
+other minijail jailing — namespaces, ugid map, caps, rlimits — intact. termina/Crostini
+keeps its stock sandbox.
 
 ### Audio (`86-lnl_audio_fw.sh`, `packages/lnl-audio-fw.tar.gz`)
 
@@ -167,11 +172,11 @@ boot normally.
 
 ## Known limitations
 
-- **ChromeOS R150: ARCVM does not start.** Everything here was developed against R149.
-  Upgrading the reference machine to R150 works — hardware, login, Crostini and the Mesa
-  override all behave — except Android, which hangs at "Starting Play Store…": the
-  crosvm seccomp policy replacement (`87-arcvm_seccomp.sh`) is generated against the
-  R149 image and needs revisiting for R150's crosvm.
+- **ARCVM Play Store can crash once after suspend/resume.** The VM survives (crosvm
+  keeps running); a venus GPU context can enter a fatal state on the first resume and
+  the Android app using it is dropped, so re-opening it recovers. Timing-dependent and
+  not reliably reproducible. Same family as the ARCVM graphics bugs above (venus/ANV on
+  Xe2 under a VM).
 - **One machine.** Verified on a single laptop model. The 7.1 kernel config comes from
   an Arch baseline, so hardware Arch does not enable is not covered.
 - `mesa-patches/0003` and `0004` de-advertise the Xe2 CCS DRM modifiers to any importer.
