@@ -137,9 +137,10 @@ Release kernels are signed with this fork's own key (see *Secure
 Boot* below); a fork without the `BRUNCH_PRIV` / `BRUNCH_PEM` secrets set will produce
 **unsigned** kernels, which boot fine but cannot be used with Secure Boot.
 
-Pick `7.1` in `brunch-setup` at install time. The Lunar Lake patches then activate on
-their own; `no_lnl_mesa`, `no_lnl_audio_fw` and `no_arcvm_seccomp` turn them off
-individually.
+Pick `7.1` in `brunch-setup` at install time — in a 7.1-only build it is the only
+entry and already preselected, since the menu is generated from the kernels the build
+actually ships. The Lunar Lake patches then activate on their own; `no_lnl_mesa`,
+`no_lnl_audio_fw` and `no_arcvm_seccomp` turn them off individually.
 
 ## Secure Boot
 

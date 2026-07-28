@@ -86,6 +86,19 @@ if [ ! -d "./kernels/$default_kernel" ]; then
 	echo "Kernel 6.12 was not built, defaulting to kernel $default_kernel"
 fi
 ln -s kernel-"$default_kernel" ./chroot/home/chronos/rootc/kernel || { echo "Failed to make the default kernel symlink"; exit 1; }
+# brunch-setup's kernel menu must only offer kernels shipped in this build —
+# a partial build (BRUNCH_KERNELS) would otherwise let the user select a
+# dangling entry that fails to boot. Default kernel first: the menu
+# preselects the first entry.
+available_kernels="$default_kernel"
+for k in $(echo "$kernels" | tr ' ' '\n' | grep -v '^chromebook-' | sort -rV); do
+	[ "$k" == "$default_kernel" ] || available_kernels="$available_kernels;$k"
+done
+for k in $(echo "$kernels" | tr ' ' '\n' | grep '^chromebook-' | sort -rV); do
+	available_kernels="$available_kernels;$k"
+done
+sed -i "s@^available_kernels=.*@available_kernels=\"$available_kernels\"@" ./chroot/home/chronos/initramfs/sbin/brunch-setup || { echo "Failed to set the kernel list in brunch-setup"; exit 1; }
+grep -q "^available_kernels=\"$available_kernels\"\$" ./chroot/home/chronos/initramfs/sbin/brunch-setup || { echo "Failed to set the kernel list in brunch-setup"; exit 1; }
 ln -s kernel ./chroot/home/chronos/rootc/kernel-4.19 || { echo "Failed to make the legacy kernel symlink"; exit 1; }
 ln -s kernel ./chroot/home/chronos/rootc/kernel-5.4 || { echo "Failed to make the legacy kernel symlink"; exit 1; }
 ln -s kernel ./chroot/home/chronos/rootc/kernel-5.10 || { echo "Failed to make the legacy kernel symlink"; exit 1; }
