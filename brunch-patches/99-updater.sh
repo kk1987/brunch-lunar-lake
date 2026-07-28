@@ -62,9 +62,20 @@ else
 fi
 
 if [[ ! -z "$framework" ]]; then
-	tar zxf "$framework" -C /mnt/stateful_partition/unencrypted/brunch_updater
-	pv /mnt/stateful_partition/unencrypted/brunch_updater/rootc.img > "$partition"7
-	if [ ! -z $update_efi ]; then pv /mnt/stateful_partition/unencrypted/brunch_updater/efi_secure.img > "$partition"12; fi
+	if ! tar zxf "$framework" -C /mnt/stateful_partition/unencrypted/brunch_updater; then
+		echo "Failed to extract $framework"
+		exit 1
+	fi
+	if ! pv /mnt/stateful_partition/unencrypted/brunch_updater/rootc.img > "$partition"7; then
+		echo "Failed to write the brunch framework partition."
+		exit 1
+	fi
+	if [ ! -z $update_efi ]; then
+		if ! pv /mnt/stateful_partition/unencrypted/brunch_updater/efi_secure.img > "$partition"12; then
+			echo "Failed to write the EFI partition."
+			exit 1
+		fi
+	fi
 	rm -r /mnt/stateful_partition/unencrypted/brunch_updater
 	cgpt add -i 2 -S 0 -T 15 -P 0 "$destination"
 	cgpt add -i 4 -S 0 -T 15 -P 15 "$destination"
@@ -73,9 +84,33 @@ if [[ ! -z "$framework" ]]; then
 fi
 
 if [[ ! -z "$recovery" ]]; then
-	loopdevice=$(losetup --show -fP "$recovery")
-	pv "$loopdevice"p3 > "$partition"5
-	losetup -d "$loopdevice"
+	# Copy the recovery image's ROOT-A into this install's ROOT-B straight from
+	# the file. This used to go through "losetup --show -fP" and read
+	# <loopdev>p3, which failed on at least one machine with the partition node
+	# missing. cgpt can read the partition table out of the image directly, so
+	# take the offset from it and copy with dd -- one less moving part, and
+	# nothing to clean up if the copy fails.
+	start=$(cgpt show -i 3 -b "$recovery")
+	size=$(cgpt show -i 3 -s "$recovery")
+	rootb=$(cgpt show -i 5 -s "$destination")
+	if [ -z "$start" ] || [ -z "$size" ] || [ -z "$rootb" ]; then
+		echo "Could not read the partition tables of $recovery and $destination"
+		exit 1
+	fi
+	if [ "$size" -gt "$rootb" ]; then
+		echo "Recovery ROOT-A ($size sectors) does not fit in ROOT-B ($rootb sectors)"
+		exit 1
+	fi
+	if ! dd if="$recovery" of="$partition"5 bs=1M iflag=skip_bytes,count_bytes skip=$((start * 512)) count=$((size * 512)) conv=fsync status=progress; then
+		echo "Failed to write ROOT-B. ChromeOS was not updated and the partition"
+		echo "priorities were left untouched, so the next boot is unaffected."
+		exit 1
+	fi
+	sync
+	# Only now hand over to brunch-init: it reads P(KERN-B) >= P(KERN-A) as
+	# "an update is pending" and rebuilds ROOT-A from ROOT-B on the next boot.
+	# Flipping these before ROOT-B is known-good makes it rebuild from stale
+	# contents instead.
 	cgpt add -i 2 -S 0 -T 15 -P 0 "$destination"
 	cgpt add -i 4 -S 0 -T 15 -P 15 "$destination"
 	sync
