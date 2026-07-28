@@ -10,11 +10,16 @@ backend), and the brunch kernel configs disable the Intel IOMMU, which these mac
 cannot boot without. This fork adds a 7.1 kernel and a Mesa 25.3.6 userspace override
 that fill both gaps, plus the ARCVM and audio fixes that fall out of them.
 
-Everything here is additive: on any non-Lunar-Lake machine the 7.1 kernel is simply one
-more entry in the kernel list and none of the LNL patches activate (each one checks the
-iGPU PCI id first). Upstream behaviour on 6.6 / 6.12 is unchanged, with one exception:
-the external drivers were brought forward so they also build on 7.1 (see *External
-drivers*), and the 6.6 / 6.12 builds compile the updated driver sources too.
+Everything here is additive: the 6.6 / 6.12 kernels and their patches are still in the
+tree, upstream behaviour on them is unchanged (with one exception: the external drivers
+were brought forward so they also build on 7.1 — see *External drivers* — and the
+6.6 / 6.12 builds compile the updated driver sources too), and none of the LNL patches
+activate on other hardware (each one checks the iGPU PCI id first). **Releases,
+however, only ship the 7.1 kernel**: the upstream kernels cannot boot a Lunar Lake
+machine (their configs disable the IOMMU), so building them here would only spend CI
+time on kernels this fork's audience cannot use. Anyone on non-LNL hardware is better
+served by upstream brunch; a full multi-kernel build remains one environment variable
+away (see *Building*).
 
 **Status: it works.** OOBE, login, reboot, re-login, Play Store, Android apps and games,
 Crostini, audio and suspend all run on the reference machine. See *Known limitations*
@@ -65,7 +70,9 @@ kernel code. Where an active upstream already carried the fixes, the vendored co
 synced to it (rtl8192eu → Mange, rtl8812au / rtl8821cu → morrownr, rtl885xxx →
 morrownr/rtw89); the rest is version-guarded compat, with per-change provenance in the
 commit messages. All changes are kernel-version-guarded or version-neutral, so the
-6.6 / 6.12 builds keep working (CI exercises them). On 7.1 the in-tree rtw89 already
+6.6 / 6.12 builds keep working — but since the default build went 7.1-only, CI no
+longer exercises them; verify with a `BRUNCH_KERNELS="6.6 6.12 7.1"` build before
+sending any of this upstream. On 7.1 the in-tree rtw89 already
 covers the rtl885xxx hardware; the external copy is kept so every kernel ships the
 same module set.
 
@@ -120,11 +127,13 @@ Same as upstream:
 sudo bash build_brunch.sh <recovery_image.bin>
 ```
 
-`prepare_kernels.sh` prepares `6.6 6.12 7.1` by default; override with
-`BRUNCH_KERNELS="7.1" ./prepare_kernels.sh` to save a lot of time while iterating.
+`prepare_kernels.sh` prepares only `7.1` by default — the kernel this fork is about.
+Run `BRUNCH_KERNELS="6.6 6.12 7.1" ./prepare_kernels.sh` for a full upstream-style
+build; 6.6 / 6.12 support has not been removed, it is just not built by default.
 
-GitHub Actions builds the whole thing on push (`.github/workflows/build.yml`) and picks
-up 7.1 automatically. Release kernels are signed with this fork's own key (see *Secure
+GitHub Actions builds on push (`.github/workflows/build.yml`); its kernel matrix comes
+from whatever `prepare_kernels.sh` prepared, so CI and releases are 7.1-only too.
+Release kernels are signed with this fork's own key (see *Secure
 Boot* below); a fork without the `BRUNCH_PRIV` / `BRUNCH_PEM` secrets set will produce
 **unsigned** kernels, which boot fine but cannot be used with Secure Boot.
 

@@ -103,7 +103,7 @@ done
 }
 
 chromeos_version="R151"
-kernels="${BRUNCH_KERNELS:-6.6 6.12 7.1}"
+kernels="${BRUNCH_KERNELS:-7.1}"
 lnl_kernel_version="7.1.5"
 
 for kernel in $kernels; do rm -rf "./kernels/$kernel" "./kernels/chromebook-$kernel"; done
