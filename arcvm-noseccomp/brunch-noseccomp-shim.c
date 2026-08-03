@@ -9,12 +9,13 @@
 // the shipped build, and --disable-sandbox is not usable because virtio-fs
 // needs minijail's namespace setup.
 //
-// Preloaded into crosvm (ARCVM only) by 87-arcvm_seccomp.sh, this turns *only*
-// the seccomp filter installation into a no-op: minijail's namespace, mount,
-// ugid-map, capability and rlimit jailing all run untouched. Only the syscall
-// filter is dropped -- the same trade the previous maximally-permissive policy
-// approach made, done in the one place that actually sticks. termina/Crostini
-// is never wrapped and keeps its stock sandbox.
+// Preloaded into crosvm (ARCVM and termina) by 87-arcvm_seccomp.sh, this turns
+// *only* the seccomp filter installation into a no-op: minijail's namespace,
+// mount, ugid-map, capability and rlimit jailing all run untouched. Only the
+// syscall filter is dropped -- the same trade the previous maximally-permissive
+// policy approach made, done in the one place that actually sticks. termina
+// needs it too: its virtio-wl worker dies on recvfrom the moment a GUI app
+// connects through sommelier, tearing the VM down.
 //
 // Two mojo capability probes (mojo/core/channel_linux.cc) call memfd_create
 // and eventfd2 with a bogus ~0 flag and PCHECK that the failure is one of

@@ -1,16 +1,17 @@
 # ARCVM no-seccomp shim
 
 `brunch-noseccomp-shim.c` is an `LD_PRELOAD` shim that neutralizes the stale
-embedded seccomp filters the ChromeOS crosvm binary installs on its ARCVM
-device workers. See the header comment in the source for the full rationale;
-in short, those build-time BPFs SIGSYS-kill the virtio-fs/gpu workers on
-recvfrom/recvmsg on Lunar Lake, and `--seccomp-policy-dir` does not override
-them in the shipped build.
+embedded seccomp filters the ChromeOS crosvm binary installs on its device
+workers. See the header comment in the source for the full rationale; in
+short, those build-time BPFs SIGSYS-kill workers on recvfrom/recvmsg on
+Lunar Lake (ARCVM: virtio-fs/gpu at startup; termina: virtio-wl as soon as a
+GUI app connects through sommelier), and `--seccomp-policy-dir` does not
+override them in the shipped build.
 
-`87-arcvm_seccomp.sh` preloads it into crosvm for ARCVM only (termina keeps its
-stock sandbox), turning just the seccomp filter installation into a no-op while
-leaving every other minijail jailing (namespaces, ugid map, caps, rlimits)
-intact. It also normalizes the mojo `memfd_create`/`eventfd2` capability probes
+`87-arcvm_seccomp.sh` preloads it into crosvm for concierge-managed VMs
+(ARCVM and termina, matched by their `ARCVM(n)`/`VM(n)` syslog tags), turning
+just the seccomp filter installation into a no-op while leaving every other
+minijail jailing (namespaces, ugid map, caps, rlimits) intact. It also normalizes the mojo `memfd_create`/`eventfd2` capability probes
 that otherwise abort once the filter is gone.
 
 ## Rebuilding the package

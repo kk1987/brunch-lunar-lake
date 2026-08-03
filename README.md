@@ -110,11 +110,14 @@ are upstream bugs, not brunch ones:
 crosvm binary embeds pre-compiled seccomp BPFs built for the volteer image; they lag
 crosvm's own tube code and SIGSYS-kill the virtio-fs/gpu device workers on
 `recvfrom`/`recvmsg`, tearing ARCVM down before the Play Store can start.
+The same stale filters also kill termina/Crostini: its virtio-wl worker dies on
+`recvfrom` the moment a GUI app connects through sommelier, taking the whole VM down
+(the terminal is unaffected because vsh runs over vsock, never touching virtio-wl).
 `--seccomp-policy-dir` does not override these embedded filters for the device workers
 in the shipped build, so the patch preloads a small shim (`arcvm-noseccomp/`) into
-crosvm for ARCVM only that no-ops the seccomp filter installation while leaving every
-other minijail jailing — namespaces, ugid map, caps, rlimits — intact. termina/Crostini
-keeps its stock sandbox.
+crosvm for concierge-managed VMs (ARCVM and termina) that no-ops the seccomp filter
+installation while leaving every other minijail jailing — namespaces, ugid map, caps,
+rlimits — intact.
 
 ### Audio (`86-lnl_audio_fw.sh`, `packages/lnl-audio-fw.tar.gz`)
 

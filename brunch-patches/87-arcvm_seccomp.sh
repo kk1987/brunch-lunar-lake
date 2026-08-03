@@ -7,11 +7,13 @@
 # embedded filters for the device workers in the shipped build, and
 # --disable-sandbox is unusable because virtio-fs needs minijail's namespaces.
 #
-# This preloads brunch-noseccomp-shim.so into crosvm for ARCVM `run` only,
-# which turns the seccomp filter installation into a no-op while leaving every
-# other minijail jailing (namespaces, ugid map, caps, rlimits) intact. termina
-# is never wrapped and keeps its stock sandbox. See arcvm-noseccomp/ for the
-# shim source and rationale.
+# This preloads brunch-noseccomp-shim.so into crosvm for concierge-managed
+# VMs (ARCVM and termina), which turns the seccomp filter installation into a
+# no-op while leaving every other minijail jailing (namespaces, ugid map,
+# caps, rlimits) intact. termina needs it too: its virtio-wl worker dies on
+# recvfrom as soon as a GUI app connects through sommelier, tearing the VM
+# down (the vsh terminal never touches virtio-wl, which is why it survives).
+# See arcvm-noseccomp/ for the shim source and rationale.
 #
 # Applied automatically when a Lunar Lake iGPU is detected on the PCI bus.
 # The option "arcvm_seccomp" forces it on, "no_arcvm_seccomp" forces it off.
@@ -54,15 +56,16 @@ if [ "$arcvm_seccomp" -eq 1 ]; then
 	fi
 	cat > /roota/usr/bin/crosvm <<'CROSVMWRAP'
 #!/bin/bash
-# brunch-lnl: preload the no-seccomp shim for ARCVM only (see brunch
-# 87-arcvm_seccomp.sh). The embedded seccomp BPFs SIGSYS-kill ARCVM device
-# workers on recvfrom/recvmsg; the shim no-ops filter installation while
-# keeping minijail's namespace/caps jailing. termina keeps its stock sandbox.
-arcvm=0
+# brunch-lnl: preload the no-seccomp shim for concierge-managed VMs (see
+# brunch 87-arcvm_seccomp.sh). The embedded seccomp BPFs SIGSYS-kill crosvm
+# device workers on recvfrom/recvmsg (ARCVM: virtio-fs/virtio-gpu; termina:
+# virtio-wl on GUI app launch); the shim no-ops filter installation while
+# keeping minijail's namespace/caps jailing. Syslog tags: ARCVM(n) / VM(n).
+wrap=0
 for a in "$@"; do
-  case "$a" in ARCVM*) arcvm=1 ;; esac
+  case "$a" in ARCVM*|VM\(*) wrap=1 ;; esac
 done
-if [[ $arcvm == 1 ]]; then
+if [[ $wrap == 1 ]]; then
   export LD_PRELOAD="/usr/lib64/brunch-noseccomp-shim.so${LD_PRELOAD:+:$LD_PRELOAD}"
 fi
 exec /usr/bin/crosvm.bin "$@"
