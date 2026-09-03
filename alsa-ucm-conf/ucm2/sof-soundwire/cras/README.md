@@ -44,22 +44,45 @@ which cras builds its nodes from the UCM `SectionDevice`s instead of guessing:
 | `Internal Mic` | by name | PCH DMIC (`DMIC Raw` PCM) when the card reports `mic:dmic` |
 | `HDMI1..3` | 5..7 | as upstream, but jacks via `JackDev` |
 
-### Realtek rt722
+### Realtek SoundWire codecs
 
-The same treatment for the rt722, the SDCA codec most non-Cirrus Lunar Lake
-laptops use: one SoundWire peripheral carrying the headset codec, the speaker
-amplifier and the DMICs, reported as `hs:rt722 spk:rt722 mic:rt722`. Upstream
-1.2.8 fails on it the same way (it would include `rt722-1.conf`, which does not
-exist). `cras/rt722.conf` covers all three functions from one file — Headphone
-on PCM 0 / headset Mic on PCM 1 (`<card> Headset Jack` input device), Speaker on
-PCM 2, Internal Mic on PCM 4 — using the machine driver's `Headphone Switch` /
-`Headset Mic Switch` / `Speaker Switch` pin switches and the codec's `rt722 FU05`
-/ `FU0F` / `FU06` / `FU1E` volume elements. The ADC mux and volume settings
-upstream applies from a `BootSequence` (which cras never runs) are folded into
-the device enable sequences. With the PCH DMICs present (`mic:dmic`) the
-rt722 microphone section is skipped and `cras/dmic.conf` supplies the node.
-Mixed designs such as rt722 + rt1320 amplifiers are not covered and keep the
-upstream 1.2.8 behaviour.
+Every Realtek SoundWire part in the kernel 7.1 Intel machine tables for
+Meteor / Lunar / Arrow / Panther Lake gets the same treatment, because
+alsa-ucm-conf 1.2.8 fails on all of them the same way (its per-codec files
+stop at rt711 / rt1308 / rt1316 / rt715, and even those are never used in
+cras's fully specified mode):
+
+| card reports | file | devices |
+|---|---|---|
+| `hs:rt711-sdca` / `hs:rt711` | `rt711-sdca.conf` / `rt711.conf` | Headphone (PCM 0), Mic (PCM 1) |
+| `hs:rt712`, `spk:rt712`, `mic:rt712` (VB) | `rt712.conf` | Headphone, Mic, Speaker (PCM 2), Internal Mic (PCM 4) |
+| `hs:rt713-sdca`, `mic:rt713` (VB) | `rt713.conf` | Headphone, Mic, Internal Mic |
+| `hs:rt721`, `spk:rt721`, `mic:rt721` | `rt721.conf` | all four |
+| `hs:rt722`, `spk:rt722`, `mic:rt722` | `rt722.conf` | all four |
+| `spk:rt1308` / `rt1316` / `rt1318` / `rt1320` | `rt13xx.conf` | Speaker, one or two amplifiers by control probing |
+| `spk:rt712+rt1320`, `spk:rt721+rt1320` | `rt1320.conf` | Speaker on the rt1320 parts |
+| `mic:rt1320` | `rt1320.conf` | Internal Mic on the rt1320 DMIC function |
+| `mic:rt712-dmic` / `mic:rt713-dmic` | `rt712-dmic.conf` / `rt713-dmic.conf` | Internal Mic (rt1712 / rt1713 parts) |
+| `mic:rt715` / `mic:rt715-sdca` | `rt715.conf` / `rt715-sdca.conf` | Internal Mic (rt715 / rt714) |
+
+Each function of the card maps to one file (`CrasHsFile` / `CrasSpkFile` /
+`CrasMicFile` in `sof-soundwire.conf`); a multi-function part's file is
+included once and defines only the sections for the functions it actually
+owns, so `hs:rt712 spk:rt712+rt1320 mic:rt712` yields headset and DMIC from
+`rt712.conf` and the speakers from `rt1320.conf`. Realtek jacks use the
+machine driver's `Headphone Switch` / `Headset Mic Switch` / `Speaker Switch`
+pin switches and the `<card> Headset Jack` input device; the codec's own
+volume/switch elements (`rt7xx FU05` / `FU0F` / `FU06` / `FU1E`, `rt711 DAC
+Surr` / `ADC 08`, `rt714 FU02`, …) are handed to cras behind `ControlExists`.
+The ADC mux selection and volume defaults upstream applies from a
+`BootSequence` (which cras never runs) are folded into the device enable
+sequences, volumes last. With the PCH DMICs present (`mic:dmic`) the
+codec's own microphone section is skipped and `cras/dmic.conf` supplies the
+node.
+
+Not covered (no upstream sof-soundwire profile to start from, or not a
+SoundWire codec at all): rt700, rt5682-sdw, cs42l42, max98363 / max98373,
+tas2783; these keep the upstream 1.2.8 behaviour.
 
 Rules the files follow, all forced by how cras (R150 `cras_alsa_card.c` /
 `cras_alsa_ucm.c` / `cras_alsa_jack.c`) consumes a fully specified UCM:
@@ -86,5 +109,5 @@ Rules the files follow, all forced by how cras (R150 `cras_alsa_card.c` /
 
 Status: written against source and the shipped topologies, not yet
 confirmed on a SoundWire machine — the reference laptop is HDA. First report
-that motivated it: Dell XPS 14 9440 (cs42l43 + 2× cs35l56). The rt722 profile
-has had no report at all yet.
+that motivated it: Dell XPS 14 9440 (cs42l43 + 2× cs35l56). The Realtek
+profiles have had no report at all yet.

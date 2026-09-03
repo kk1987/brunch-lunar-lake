@@ -134,11 +134,13 @@ produces no sound, because the alsa-ucm-conf release brunch has to ship (1.2.8, 
 one ChromeOS's alsa-lib can parse) has no profile for these codecs — the UCM fails to
 load, and without one cras guesses nodes from mixer control names, which are all
 prefixed on these codecs, so it ends up with a phantom "Speaker" on the headphone PCM.
-The overlay adds a cras-specific profile (fully specified PCM numbers, jack input
-devices, amplifier switches) for the Cirrus SoundWire combinations and for the Realtek
-**rt722** multi-function codec (the other common Lunar Lake design), written against the
-7.1 kernel driver and the upstream alsa-ucm-conf 1.2.16 profiles and parse-tested
-against alsa-lib 1.2.8. Every other SoundWire codec keeps the upstream 1.2.8 behaviour.
+The overlay adds cras-specific profiles (fully specified PCM numbers, jack input
+devices, amplifier switches) for the Cirrus SoundWire combinations and for every Realtek
+SoundWire part in the 7.1 Intel machine tables (rt711, rt712, rt713, rt721, rt722, the
+rt1308 / rt1316 / rt1318 / rt1320 amplifiers, the rt715 / rt1712 / rt1713 microphone
+parts), written against the 7.1 kernel drivers and the upstream alsa-ucm-conf 1.2.16
+profiles and parse-tested against alsa-lib 1.2.8. Anything else keeps the upstream 1.2.8
+behaviour.
 See [`alsa-ucm-conf/ucm2/sof-soundwire/cras/README.md`](alsa-ucm-conf/ucm2/sof-soundwire/cras/README.md).
 
 ## Building
@@ -202,9 +204,9 @@ boot normally.
   an Arch baseline, so hardware Arch does not enable is not covered.
 - **The SoundWire audio profiles are untested on hardware.** The reference laptop has an
   HDA codec; the `sof-soundwire` cras profiles were written from the kernel driver and
-  upstream UCM sources and only parse-tested. Reports from cs42l43 / cs35l56 and rt722
-  machines (`cras` messages in `/var/log/messages`, `amixer -c0 controls`) are what
-  they need.
+  upstream UCM sources and only parse-tested. Reports from cs42l43 / cs35l56 and Realtek
+  SoundWire machines (`cras` messages in `/var/log/messages`, `amixer -c0 controls`) are
+  what they need.
 - `mesa-patches/0003` and `0004` de-advertise the Xe2 CCS DRM modifiers to any importer.
   They are not what fixed the stripe-noise bug (`0006` was), but they are kept: any
   consumer using a minigbm older than Lunar Lake cannot interpret those modifiers.
