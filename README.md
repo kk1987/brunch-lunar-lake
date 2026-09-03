@@ -37,9 +37,10 @@ machines should work — the patches key off the iGPU PCI id (`8086:6420`, `8086
 ### 7.1 kernel (`kernel-patches/7.1/`, `kernel-patches/7.1_*config`)
 
 No ChromiumOS 7.1 branch exists, so this kernel is built from a **vanilla kernel.org
-tree**. `prepare_kernels.sh` learned to fetch one and to take its config from a vendored
-baseline instead of the flex/CrOS assembly; the ChromeOS config fragments the build still
-needs are vendored in `kernel-patches/7.1-cros-configs/`.
+tree**. `prepare_kernels.sh` learned to fetch one and to build its config from a vendored
+distro baseline (`kernel-patches/7.1_base_config`, Arch Linux's) plus brunch's
+`brunch_configs` and the Lunar Lake additions in `7.1_extra_configs`, instead of the
+flex/CrOS assembly.
 
 The brunch patch set was forward-ported, plus four ChromeOS kernel behaviours that
 ChromeOS userspace depends on and vanilla does not have:
