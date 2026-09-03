@@ -181,7 +181,7 @@ sudo bash build_brunch.sh <recovery_image.bin>
 ```
 
 `prepare_kernels.sh` prepares only `7.1` by default — the kernel this fork is about.
-Run `BRUNCH_KERNELS="6.6 6.12 7.1" ./prepare_kernels.sh` for a full upstream-style
+Run `BRUNCH_KERNELS="6.6 6.12 6.18 7.1" ./prepare_kernels.sh` for a full upstream-style
 build; 6.6 / 6.12 support has not been removed, it is just not built by default.
 
 GitHub Actions builds on push (`.github/workflows/build.yml`); its kernel matrix comes

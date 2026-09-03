@@ -184,7 +184,7 @@ returned_values=""
 # Placeholder list for running this script straight from the repo;
 # build_brunch.sh rewrites this line so the menu only offers the kernels
 # actually shipped in the build, default kernel first.
-available_kernels="6.12;chromebook-6.12;6.6;chromebook-6.6;7.1"
+available_kernels="6.12;chromebook-6.12;6.6;chromebook-6.6;experimental-6.18;7.1"
 echo "Select your kernel (press ENTER to validate your choice)"
 singleselect "$available_kernels"
 selected_kernel="$returned_values"

@@ -34,15 +34,8 @@ if [ "$2" == "generic" ] && [ ! -f ./kernel-patches/${1}_base_config ]; then
 fi
 if [ -f ./kernel-patches/${1}_base_config ]; then
 	: # distro baseline config already complete, no CrOS fragments needed
-elif [ -d ./kernels/$1/chromeos/config ]; then
-	sed '/CONFIG_ATH\|CONFIG_DEBUG_INFO\|CONFIG_IWL\|CONFIG_MODULE_COMPRESS\|CONFIG_MOUSE/d' ./kernels/$1/chromeos/config/chromeos/base.config >> ./kernels/$1/arch/x86/configs/chromeos_defconfig || { echo "Kernel $1 configuration failed"; exit 1; }
-	sed '/CONFIG_ATH\|CONFIG_DEBUG_INFO\|CONFIG_IWL\|CONFIG_MODULE_COMPRESS\|CONFIG_MOUSE/d' ./kernels/$1/chromeos/config/chromeos/x86_64/common.config >> ./kernels/$1/arch/x86/configs/chromeos_defconfig || { echo "Kernel $1 configuration failed"; exit 1; }
-	cat ./kernels/$1/chromeos/config/chromeos/x86_64/chromeos-*.flavour.config | grep '^CONFIG_SND' >> ./kernels/$1/arch/x86/configs/chromeos_defconfig || { echo "Kernel $1 configuration failed"; exit 1; }
 else
-	# vanilla kernel.org tree: use the CrOS config fragments vendored in the repo
-	sed '/CONFIG_ATH\|CONFIG_DEBUG_INFO\|CONFIG_IWL\|CONFIG_MODULE_COMPRESS\|CONFIG_MOUSE/d' ./kernel-patches/$1-cros-configs/base.config >> ./kernels/$1/arch/x86/configs/chromeos_defconfig || { echo "Kernel $1 configuration failed"; exit 1; }
-	sed '/CONFIG_ATH\|CONFIG_DEBUG_INFO\|CONFIG_IWL\|CONFIG_MODULE_COMPRESS\|CONFIG_MOUSE/d' ./kernel-patches/$1-cros-configs/common.config >> ./kernels/$1/arch/x86/configs/chromeos_defconfig || { echo "Kernel $1 configuration failed"; exit 1; }
-	grep '^CONFIG_SND' ./kernel-patches/$1-cros-configs/flavours-snd.config >> ./kernels/$1/arch/x86/configs/chromeos_defconfig || { echo "Kernel $1 configuration failed"; exit 1; }
+	cat ./kernel-patches/chromeos_configs >> ./kernels/$1/arch/x86/configs/chromeos_defconfig || { echo "Kernel $1 configuration failed"; exit 1; }
 fi
 cat ./kernel-patches/brunch_configs >> ./kernels/$1/arch/x86/configs/chromeos_defconfig || { echo "Kernel $1 configuration failed"; exit 1; }
 if [ -f ./kernel-patches/${1}_extra_configs ]; then
@@ -55,9 +48,6 @@ cp ./kernels/$1/out/.config ./kernels/$1/arch/x86/configs/chromeos_defconfig || 
 
 download_and_patch_kernels()
 {
-kernel_remote_path="$(git ls-remote https://chromium.googlesource.com/chromiumos/third_party/kernel/ | grep "refs/heads/release-$chromeos_version" | head -1 | sed -e 's#.*\t##' -e 's#chromeos-.*##' | sort -u)chromeos-"
-[ ! "x$kernel_remote_path" == "x" ] || { echo "Remote path not found"; exit 1; }
-echo "kernel_remote_path=$kernel_remote_path"
 for kernel in $kernels; do
 	case "$kernel" in
 		7.1)
@@ -70,14 +60,23 @@ for kernel in $kernels; do
 			rm -f "./kernels/linux-$kernel.tar.xz"
 			apply_patches "$kernel"
 			make_config "$kernel" "generic"
-			continue
 		;;
-	esac
-	kernel_version=$(curl -Ls "https://chromium.googlesource.com/chromiumos/third_party/kernel/+/$kernel_remote_path$kernel/Makefile?format=TEXT" | base64 --decode | sed -n -e 1,4p | sed -e '/^#/d' | cut -d'=' -f 2 | sed -z 's#\n##g' | sed 's#^ *##g' | sed 's# #.#g')
-	echo "kernel_version=$kernel_version"
-	[ ! "x$kernel_version" == "x" ] || { echo "Kernel version not found"; exit 1; }
-	case "$kernel" in
+		6.18)
+			echo "Downloading latest mainline kernel source for kernel $kernel"
+			curl -L $(curl -s https://www.kernel.org/releases.json | sed 's@ @@g' | grep '^"source"' | grep linux-$kernel | cut -d '"' -f4) -o "./kernels/experimental-$kernel.tar.xz" || { echo "Kernel source download failed"; exit 1; }
+			mkdir "./kernels/experimental-$kernel"
+			tar -C "./kernels/experimental-$kernel" -xf "./kernels/experimental-$kernel.tar.xz" --strip 1 || { echo "Kernel $kernel source extraction failed"; exit 1; }
+			rm -f "./kernels/experimental-$kernel.tar.xz"
+			apply_patches "experimental-$kernel"
+			make_config "experimental-$kernel" "generic"
+		;;
 		6.12|6.6)
+			kernel_remote_path="$(git ls-remote https://chromium.googlesource.com/chromiumos/third_party/kernel/ | grep "refs/heads/release-$chromeos_version" | head -1 | sed -e 's#.*\t##' -e 's#chromeos-.*##' | sort -u)chromeos-"
+			[ ! "x$kernel_remote_path" == "x" ] || { echo "Remote path not found"; exit 1; }
+			echo "kernel_remote_path=$kernel_remote_path"
+			kernel_version=$(curl -Ls "https://chromium.googlesource.com/chromiumos/third_party/kernel/+/$kernel_remote_path$kernel/Makefile?format=TEXT" | base64 --decode | sed -n -e 1,4p | sed -e '/^#/d' | cut -d'=' -f 2 | sed -z 's#\n##g' | sed 's#^ *##g' | sed 's# #.#g')
+			echo "kernel_version=$kernel_version"
+			[ ! "x$kernel_version" == "x" ] || { echo "Kernel version not found"; exit 1; }
 			echo "Downloading ChromiumOS kernel source for kernel $kernel version $kernel_version from https://chromium.googlesource.com/chromiumos/third_party/kernel/+archive/$kernel_remote_path$kernel.tar.gz"
 			curl -L "https://chromium.googlesource.com/chromiumos/third_party/kernel/+archive/$kernel_remote_path$kernel.tar.gz" -o "./kernels/chromiumos-$kernel.tar.gz" || { echo "Kernel source download failed"; exit 1; }
 			mkdir "./kernels/chromebook-$kernel" "./kernels/$kernel"
@@ -90,6 +89,12 @@ for kernel in $kernels; do
 			make_config "$kernel" "generic"
 		;;
 		*)
+			kernel_remote_path="$(git ls-remote https://chromium.googlesource.com/chromiumos/third_party/kernel/ | grep "refs/heads/release-$chromeos_version" | head -1 | sed -e 's#.*\t##' -e 's#chromeos-.*##' | sort -u)chromeos-"
+			[ ! "x$kernel_remote_path" == "x" ] || { echo "Remote path not found"; exit 1; }
+			echo "kernel_remote_path=$kernel_remote_path"
+			kernel_version=$(curl -Ls "https://chromium.googlesource.com/chromiumos/third_party/kernel/+/$kernel_remote_path$kernel/Makefile?format=TEXT" | base64 --decode | sed -n -e 1,4p | sed -e '/^#/d' | cut -d'=' -f 2 | sed -z 's#\n##g' | sed 's#^ *##g' | sed 's# #.#g')
+			echo "kernel_version=$kernel_version"
+			[ ! "x$kernel_version" == "x" ] || { echo "Kernel version not found"; exit 1; }
 			echo "Downloading ChromiumOS kernel source for kernel $kernel version $kernel_version from https://chromium.googlesource.com/chromiumos/third_party/kernel/+archive/$kernel_remote_path$kernel.tar.gz"
 			curl -L "https://chromium.googlesource.com/chromiumos/third_party/kernel/+archive/$kernel_remote_path$kernel.tar.gz" -o "./kernels/chromiumos-$kernel.tar.gz" || { echo "Kernel source download failed"; exit 1; }
 			mkdir "./kernels/chromebook-$kernel"
@@ -102,11 +107,11 @@ for kernel in $kernels; do
 done
 }
 
-chromeos_version="R152"
+chromeos_version="R153"
 kernels="${BRUNCH_KERNELS:-7.1}"
 lnl_kernel_version="7.1.5"
 
-for kernel in $kernels; do rm -rf "./kernels/$kernel" "./kernels/chromebook-$kernel"; done
+for kernel in $kernels; do rm -rf "./kernels/$kernel" "./kernels/chromebook-$kernel" "./kernels/experimental-$kernel"; done
 mkdir -p ./kernels
 
 download_and_patch_kernels
