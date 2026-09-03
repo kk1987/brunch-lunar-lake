@@ -121,9 +121,36 @@ rlimits — intact.
 
 ### Audio (`86-lnl_audio_fw.sh`, `packages/lnl-audio-fw.tar.gz`)
 
-ChromeOS recovery images only ship SOF **IPC3** firmware. Lunar Lake needs the IPC4 set
-(`intel/sof-ipc4/lnl`, `sof-ipc4-lib/lnl`, `sof-ipc4-tplg`), so without this there is no
-sound at all. Files come from upstream linux-firmware.
+`build_brunch.sh` assembles brunch's firmware package from a linux-firmware checkout
+plus the `lib/firmware/intel/sof*` directories of the ChromeOS rootfs it builds against.
+linux-firmware no longer carries any Intel SOF firmware (its WHENCE lists none), so the
+Intel SOF files in `packages/firmwares.tar.gz` come from the ChromeOS rootfs alone:
+
+- CI builds use the ChromeOS Flex (reven) rootfs, which ships an IPC4 set, but an old
+  one: SOF 2.12 (March 2025) as of R150, with a thinner topology set (no
+  `sof-lnl-dmic-*`, `sof-sdca-*`, `sof-ptl-*`, ...).
+- A build against a Chromebook recovery image (volteer etc.) gets IPC3 only
+  (`intel/sof`, `intel/sof-tplg`): no `intel/sof-ipc4` at all, and Lunar Lake has no
+  sound.
+
+`86-lnl_audio_fw.sh` therefore overlays a current sof-bin release on Lunar Lake
+machines, after `50-add_generic_firmwares.sh` so its files replace the rootfs copy:
+`intel/sof-ipc4/lnl`, `intel/sof-ipc4-lib/lnl` and the whole `intel/sof-ipc4-tplg`
+directory of [sof-bin v2025.12.2](https://github.com/thesofproject/sof-bin/releases/tag/v2025.12.2)
+(SOF 2.14.1), uncompressed and byte-for-byte as released. Only the `lnl` firmware is
+included and the patch only triggers on Lunar Lake PCI ids; the topology directory
+happens to cover MTL / ARL / PTL / WCL as well. To regenerate the package from a sof-bin
+release:
+
+```sh
+curl -LO https://github.com/thesofproject/sof-bin/releases/download/v2025.12.2/sof-bin-2025.12.2.tar.gz
+tar xzf sof-bin-2025.12.2.tar.gz
+mkdir -p stage/lib/firmware/intel/sof-ipc4 stage/lib/firmware/intel/sof-ipc4-lib
+cp -a sof-bin-2025.12.2/sof-ipc4/lnl     stage/lib/firmware/intel/sof-ipc4/
+cp -a sof-bin-2025.12.2/sof-ipc4-lib/lnl stage/lib/firmware/intel/sof-ipc4-lib/
+cp -a sof-bin-2025.12.2/sof-ipc4-tplg    stage/lib/firmware/intel/
+tar -C stage -czf packages/lnl-audio-fw.tar.gz lib --owner=0 --group=0
+```
 
 #### SoundWire codecs (`alsa-ucm-conf/ucm2/sof-soundwire/`)
 

@@ -1,11 +1,23 @@
-# Install Intel SOF IPC4 audio DSP firmware for Lunar Lake.
+# Install Intel SOF IPC4 audio DSP firmware and topologies for Lunar Lake.
 #
-# ChromeOS recovery images only ship SOF IPC3 firmware (intel/sof) for the
-# platforms Chromebooks actually used; Lunar Lake audio needs the IPC4 set
-# (intel/sof-ipc4/lnl + sof-ipc4-lib/lnl + sof-ipc4-tplg) which is absent,
-# leaving snd-sof-pci-intel-lnl without firmware (no sound at all).
-# Firmware files come from upstream linux-firmware (zstd-compressed, the
-# brunch kernels enable CONFIG_FW_LOADER_COMPRESS_ZSTD).
+# brunch's firmware package (packages/firmwares.tar.gz, unpacked over
+# /lib/firmware by 50-add_generic_firmwares.sh) gets its Intel SOF files from
+# exactly one place: the lib/firmware/intel/sof* directories of the ChromeOS
+# rootfs build_brunch.sh builds against. linux-firmware no longer carries any
+# Intel SOF file (its WHENCE lists none), so the linux-firmware checkout
+# contributes nothing there. Two cases follow:
+#  - ChromeOS Flex (reven) rootfs, what CI builds use: ships an IPC4 set, but
+#    an old one (SOF 2.12, March 2025, as of R150) with a thinner topology
+#    set (no sof-lnl-dmic-*, sof-sdca-*, sof-ptl-*, ...).
+#  - Chromebook recovery images (volteer, ...): IPC3 only (intel/sof,
+#    intel/sof-tplg). No intel/sof-ipc4 at all, snd-sof-pci-intel-lnl has
+#    nothing to load, no sound.
+#
+# packages/lnl-audio-fw.tar.gz overlays a current sof-bin release on top:
+# intel/sof-ipc4/lnl, intel/sof-ipc4-lib/lnl and the whole intel/sof-ipc4-tplg
+# directory of sof-bin v2025.12.2 (SOF 2.14.1), uncompressed and byte-for-byte
+# as released. This runs after 50-add_generic_firmwares.sh, so these files
+# replace the rootfs copy. README.md (Audio) records how to regenerate it.
 #
 # Applied automatically when a Lunar Lake iGPU is detected on the PCI bus.
 # The option "lnl_audio_fw" forces it on, "no_lnl_audio_fw" forces it off.
