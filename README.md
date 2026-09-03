@@ -125,6 +125,21 @@ ChromeOS recovery images only ship SOF **IPC3** firmware. Lunar Lake needs the I
 (`intel/sof-ipc4/lnl`, `sof-ipc4-lib/lnl`, `sof-ipc4-tplg`), so without this there is no
 sound at all. Files come from upstream linux-firmware.
 
+#### SoundWire codecs (`alsa-ucm-conf/ucm2/sof-soundwire/`)
+
+Most Lunar Lake laptops (and the Meteor/Arrow Lake Dell XPS line) do not use an HDA
+codec: audio is a SoundWire **cs42l43** headset codec plus **cs35l56** amplifiers,
+registered by the kernel as the `sof-soundwire` card. The card probes fine and still
+produces no sound, because the alsa-ucm-conf release brunch has to ship (1.2.8, the
+one ChromeOS's alsa-lib can parse) has no profile for these codecs — the UCM fails to
+load, and without one cras guesses nodes from mixer control names, which are all
+prefixed on these codecs, so it ends up with a phantom "Speaker" on the headphone PCM.
+The overlay adds a cras-specific profile (fully specified PCM numbers, jack input
+devices, amplifier switches) for the Cirrus SoundWire combinations, written against the
+7.1 kernel driver and the upstream alsa-ucm-conf 1.2.16 profiles and parse-tested
+against alsa-lib 1.2.8. Every other SoundWire codec keeps the upstream 1.2.8 behaviour.
+See [`alsa-ucm-conf/ucm2/sof-soundwire/cras/README.md`](alsa-ucm-conf/ucm2/sof-soundwire/cras/README.md).
+
 ## Building
 
 Same as upstream:
@@ -184,6 +199,10 @@ boot normally.
   Xe2 under a VM).
 - **One machine.** Verified on a single laptop model. The 7.1 kernel config comes from
   an Arch baseline, so hardware Arch does not enable is not covered.
+- **The SoundWire audio profile is untested on hardware.** The reference laptop has an
+  HDA codec; the `sof-soundwire` cras profile was written from the kernel driver and
+  upstream UCM sources and only parse-tested. Reports from cs42l43 / cs35l56 machines
+  (`cras` messages in `/var/log/messages`, `amixer -c0 controls`) are what it needs.
 - `mesa-patches/0003` and `0004` de-advertise the Xe2 CCS DRM modifiers to any importer.
   They are not what fixed the stripe-noise bug (`0006` was), but they are kept: any
   consumer using a minigbm older than Lunar Lake cannot interpret those modifiers.
