@@ -44,6 +44,23 @@ which cras builds its nodes from the UCM `SectionDevice`s instead of guessing:
 | `Internal Mic` | by name | PCH DMIC (`DMIC Raw` PCM) when the card reports `mic:dmic` |
 | `HDMI1..3` | 5..7 | as upstream, but jacks via `JackDev` |
 
+### Realtek rt722
+
+The same treatment for the rt722, the SDCA codec most non-Cirrus Lunar Lake
+laptops use: one SoundWire peripheral carrying the headset codec, the speaker
+amplifier and the DMICs, reported as `hs:rt722 spk:rt722 mic:rt722`. Upstream
+1.2.8 fails on it the same way (it would include `rt722-1.conf`, which does not
+exist). `cras/rt722.conf` covers all three functions from one file — Headphone
+on PCM 0 / headset Mic on PCM 1 (`<card> Headset Jack` input device), Speaker on
+PCM 2, Internal Mic on PCM 4 — using the machine driver's `Headphone Switch` /
+`Headset Mic Switch` / `Speaker Switch` pin switches and the codec's `rt722 FU05`
+/ `FU0F` / `FU06` / `FU1E` volume elements. The ADC mux and volume settings
+upstream applies from a `BootSequence` (which cras never runs) are folded into
+the device enable sequences. With the PCH DMICs present (`mic:dmic`) the
+rt722 microphone section is skipped and `cras/dmic.conf` supplies the node.
+Mixed designs such as rt722 + rt1320 amplifiers are not covered and keep the
+upstream 1.2.8 behaviour.
+
 Rules the files follow, all forced by how cras (R150 `cras_alsa_card.c` /
 `cras_alsa_ucm.c` / `cras_alsa_jack.c`) consumes a fully specified UCM:
 
@@ -59,8 +76,9 @@ Rules the files follow, all forced by how cras (R150 `cras_alsa_card.c` /
   0, and a missing hctl jack is fatal for the card while a missing input
   device only costs plug detection.
 - Everything is UCM Syntax 6 and uses only alsa-lib 1.2.8 features (nested
-  `If` instead of sibling blocks appending to a variable, per-channel `cset`
-  values for stereo switches, no `LibraryConfig` remaps).
+  `If` instead of sibling blocks appending to a variable, no `LibraryConfig`
+  remaps). Multi-channel switches and volumes are written one value per
+  channel for clarity; alsa-lib applies a single value to every channel too.
 - The PCM numbers and control names come from the kernel 7.1 tree
   (`sound/soc/sdw_utils/`, `sound/soc/codecs/cs42l43.c`, `cs35l56.c`) and the
   upstream alsa-ucm-conf 1.2.16 profiles, which are what desktop distros run
@@ -68,4 +86,5 @@ Rules the files follow, all forced by how cras (R150 `cras_alsa_card.c` /
 
 Status: written against source and the shipped topologies, not yet
 confirmed on a SoundWire machine — the reference laptop is HDA. First report
-that motivated it: Dell XPS 14 9440 (cs42l43 + 2× cs35l56).
+that motivated it: Dell XPS 14 9440 (cs42l43 + 2× cs35l56). The rt722 profile
+has had no report at all yet.

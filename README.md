@@ -135,7 +135,8 @@ one ChromeOS's alsa-lib can parse) has no profile for these codecs — the UCM f
 load, and without one cras guesses nodes from mixer control names, which are all
 prefixed on these codecs, so it ends up with a phantom "Speaker" on the headphone PCM.
 The overlay adds a cras-specific profile (fully specified PCM numbers, jack input
-devices, amplifier switches) for the Cirrus SoundWire combinations, written against the
+devices, amplifier switches) for the Cirrus SoundWire combinations and for the Realtek
+**rt722** multi-function codec (the other common Lunar Lake design), written against the
 7.1 kernel driver and the upstream alsa-ucm-conf 1.2.16 profiles and parse-tested
 against alsa-lib 1.2.8. Every other SoundWire codec keeps the upstream 1.2.8 behaviour.
 See [`alsa-ucm-conf/ucm2/sof-soundwire/cras/README.md`](alsa-ucm-conf/ucm2/sof-soundwire/cras/README.md).
@@ -199,10 +200,11 @@ boot normally.
   Xe2 under a VM).
 - **One machine.** Verified on a single laptop model. The 7.1 kernel config comes from
   an Arch baseline, so hardware Arch does not enable is not covered.
-- **The SoundWire audio profile is untested on hardware.** The reference laptop has an
-  HDA codec; the `sof-soundwire` cras profile was written from the kernel driver and
-  upstream UCM sources and only parse-tested. Reports from cs42l43 / cs35l56 machines
-  (`cras` messages in `/var/log/messages`, `amixer -c0 controls`) are what it needs.
+- **The SoundWire audio profiles are untested on hardware.** The reference laptop has an
+  HDA codec; the `sof-soundwire` cras profiles were written from the kernel driver and
+  upstream UCM sources and only parse-tested. Reports from cs42l43 / cs35l56 and rt722
+  machines (`cras` messages in `/var/log/messages`, `amixer -c0 controls`) are what
+  they need.
 - `mesa-patches/0003` and `0004` de-advertise the Xe2 CCS DRM modifiers to any importer.
   They are not what fixed the stripe-noise bug (`0006` was), but they are kept: any
   consumer using a minigbm older than Lunar Lake cannot interpret those modifiers.
