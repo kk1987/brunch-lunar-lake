@@ -13,13 +13,18 @@ that fill both gaps, plus the ARCVM and audio fixes that fall out of them.
 Everything here is additive: the 6.6 / 6.12 kernels and their patches are still in the
 tree, upstream behaviour on them is unchanged (with one exception: the external drivers
 were brought forward so they also build on 7.1 — see *External drivers* — and the
-6.6 / 6.12 builds compile the updated driver sources too), and none of the LNL patches
-activate on other hardware (each one checks the iGPU PCI id first). **Releases,
-however, only ship the 7.1 kernel**: the upstream kernels cannot boot a Lunar Lake
-machine (their configs disable the IOMMU), so building them here would only spend CI
-time on kernels this fork's audience cannot use. Anyone on non-LNL hardware is better
-served by upstream brunch; a full multi-kernel build remains one environment variable
-away (see *Building*).
+6.6 / 6.12 builds compile the updated driver sources too), and every patch added here
+checks the iGPU PCI id before it does anything. **Releases, however, only ship the 7.1
+kernel**: the upstream kernels cannot boot a Lunar Lake machine (their configs disable
+the IOMMU), so building them here would only spend CI time on kernels this fork's
+audience cannot use; a full multi-kernel build remains one environment variable away
+(see *Building*).
+
+Two later Intel generations get a piece of this as well: **Meteor Lake and Arrow Lake**
+need the same Intel SOF firmware overlay — no ChromeOS image carries usable IPC4
+firmware for them either — and the same SoundWire UCM profiles, but nothing else, since
+their graphics run on i915 with the Mesa the ChromeOS image already ships. See *Meteor
+Lake and Arrow Lake*. Everyone else is still better served by upstream brunch.
 
 **Status: it works.** OOBE, login, reboot, re-login, Play Store, Android apps and games,
 Crostini, audio and suspend all run on the reference machine. See *Known limitations*
@@ -29,8 +34,8 @@ before you rely on it.
 
 Developed and tested on an **HP OmniBook X Flip**, Core Ultra 9 288V, Xe2 `8086:64A0`,
 against the **ChromeOS R149, R150 and R151 volteer** recovery images. Other Lunar Lake
-machines should work — the patches key off the iGPU PCI id (`8086:6420`, `8086:64a0`,
-`8086:64b0`), not off the laptop model — but nothing else has been tried.
+machines should work — the Lunar Lake patches key off the iGPU PCI id (`8086:6420`,
+`8086:64a0`, `8086:64b0`), not off the laptop model — but nothing else has been tried.
 
 ## What this fork adds
 
@@ -120,7 +125,7 @@ crosvm for concierge-managed VMs (ARCVM and termina) that no-ops the seccomp fil
 installation while leaving every other minijail jailing — namespaces, ugid map, caps,
 rlimits — intact.
 
-### Audio (`86-lnl_audio_fw.sh`, `packages/lnl-audio-fw.tar.gz`)
+### Audio (`86-intel_sof_fw.sh`, `packages/intel-sof-fw.tar.gz`)
 
 `build_brunch.sh` assembles brunch's firmware package from a linux-firmware checkout
 plus the `lib/firmware/intel/sof*` directories of the ChromeOS rootfs it builds against.
@@ -133,24 +138,35 @@ Intel SOF files in `packages/firmwares.tar.gz` come from the ChromeOS rootfs alo
 - A build against a Chromebook recovery image (volteer etc.) gets IPC3 only
   (`intel/sof`, `intel/sof-tplg`): no `intel/sof-ipc4` at all, and Lunar Lake has no
   sound.
+- A build against a *Meteor Lake* Chromebook image (rex) does not fix this either.
+  ChromeOS keeps its firmware in per-model directories
+  (`intel/sof-ipc4/mtl/{community,karis}/sof-mtl.ri`, not the
+  `intel/sof-ipc4/mtl/sof-mtl.ri` `pci-mtl.c` asks for), keeps its topologies in
+  `intel/sof-ace-tplg` rather than `intel/sof-ipc4-tplg`, and ships only the four
+  topologies that board itself uses. `build_brunch.sh` copies those paths verbatim.
 
-`86-lnl_audio_fw.sh` therefore overlays a current sof-bin release on Lunar Lake
-machines, after `50-add_generic_firmwares.sh` so its files replace the rootfs copy:
-`intel/sof-ipc4/lnl`, `intel/sof-ipc4-lib/lnl` and the whole `intel/sof-ipc4-tplg`
+`86-intel_sof_fw.sh` therefore overlays a current sof-bin release, after
+`50-add_generic_firmwares.sh` so its files replace the rootfs copy:
+`intel/sof-ipc4/{lnl,mtl,arl,arl-s}`, `intel/sof-ipc4-lib/lnl` and the whole
+`intel/sof-ipc4-tplg`
 directory of [sof-bin v2025.12.2](https://github.com/thesofproject/sof-bin/releases/tag/v2025.12.2)
-(SOF 2.14.1), uncompressed and byte-for-byte as released. Only the `lnl` firmware is
-included and the patch only triggers on Lunar Lake PCI ids; the topology directory
-happens to cover MTL / ARL / PTL / WCL as well. To regenerate the package from a sof-bin
-release:
+(SOF 2.14.1), uncompressed and byte-for-byte as released — that release has no
+`sof-ipc4-lib` for anything but `lnl`, and its `arl` / `arl-s` firmware is mostly
+symlinks into `mtl`. The patch triggers on Lunar Lake, Meteor Lake and Arrow Lake iGPU
+ids; the topology directory covers PTL / WCL as well, but no firmware for those is
+shipped, since their graphics do not work here yet. To regenerate the package from a
+sof-bin release:
 
 ```sh
 curl -LO https://github.com/thesofproject/sof-bin/releases/download/v2025.12.2/sof-bin-2025.12.2.tar.gz
 tar xzf sof-bin-2025.12.2.tar.gz
 mkdir -p stage/lib/firmware/intel/sof-ipc4 stage/lib/firmware/intel/sof-ipc4-lib
-cp -a sof-bin-2025.12.2/sof-ipc4/lnl     stage/lib/firmware/intel/sof-ipc4/
+for p in lnl mtl arl arl-s; do
+    cp -a sof-bin-2025.12.2/sof-ipc4/"$p" stage/lib/firmware/intel/sof-ipc4/
+done
 cp -a sof-bin-2025.12.2/sof-ipc4-lib/lnl stage/lib/firmware/intel/sof-ipc4-lib/
 cp -a sof-bin-2025.12.2/sof-ipc4-tplg    stage/lib/firmware/intel/
-tar -C stage -czf packages/lnl-audio-fw.tar.gz lib --owner=0 --group=0
+tar -C stage --sort=name -czf packages/intel-sof-fw.tar.gz lib --owner=0 --group=0
 ```
 
 #### SoundWire codecs (`alsa-ucm-conf/ucm2/sof-soundwire/`)
@@ -170,6 +186,56 @@ parts), written against the 7.1 kernel drivers and the upstream alsa-ucm-conf 1.
 profiles and parse-tested against alsa-lib 1.2.8. Anything else keeps the upstream 1.2.8
 behaviour.
 See [`alsa-ucm-conf/ucm2/sof-soundwire/cras/README.md`](alsa-ucm-conf/ucm2/sof-soundwire/cras/README.md).
+
+## Meteor Lake and Arrow Lake
+
+Meteor Lake (Core Ultra 100) and Arrow Lake (Core Ultra 200H / U / S) need far less than
+Lunar Lake does, because unlike Lunar Lake they are generations ChromeOS itself supports.
+Both run on **i915**, not `xe` — 7.1's `xe` driver still marks them
+`require_force_probe`, and brunch's kernel configs set `CONFIG_DRM_I915_FORCE_PROBE="*"`
+— and the Mesa 24.2.3 inside the ChromeOS image already knows them: the
+`libgallium_dri.so` of a volteer R149 image carries the `Intel(R) Arc(tm) Graphics (MTL)`
+and `Intel(R) Graphics (ARL)` device entries. The Mesa override in this fork therefore
+does not apply and does not switch on — `85-mesa_lnl.sh` checks for a Lunar Lake iGPU id
+first. Do not force it on with `lnl_mesa`: the minigbm ABI shim and the chrome flags in
+that package were built and measured for Xe2 alone.
+
+What does carry over is audio, for exactly the reason it does on Lunar Lake:
+
+- **SOF firmware.** MTL and ARL are IPC4-only, and `snd-intel-dspcfg` picks SOF over the
+  legacy HDA driver whenever the machine has digital mics or SoundWire links
+  (`FLAG_SOF_ONLY_IF_DMIC_OR_SOUNDWIRE`, `sound/hda/core/intel-dsp-config.c`) — nearly
+  every laptop. With no `intel/sof-ipc4` in the image, SOF has nothing to load and the
+  machine is silent. `86-intel_sof_fw.sh` installs the firmware for these platforms too
+  and triggers on their iGPU ids.
+- **SoundWire UCM profiles.** They were written from the 7.1 Intel machine tables, which
+  cover Meteor / Lunar / Arrow / Panther Lake, and `50-add_generic_firmwares.sh`
+  installs them unconditionally — no PCI id gate at all.
+
+Three things worth knowing before trying it:
+
+- **The Intel IOMMU is enabled in this kernel.** Upstream brunch's configs disable it,
+  and a machine whose firmware hands the CPU over in locked x2APIC mode cannot boot
+  without DMAR interrupt remapping. That is a firmware property rather than a
+  generational one — it is universal on Lunar Lake, and some Meteor / Arrow Lake laptops
+  are in the same position. `sudo rdmsr 0xBD` (msr-tools, from any Linux) answers it:
+  bit 0 set means legacy xAPIC is disabled, so the IOMMU is required. This fork's kernel
+  enables it either way.
+- **ARCVM may need the `arcvm_seccomp` option.** The stale crosvm seccomp filters are a
+  property of the ChromeOS image, not of the CPU, but they have only been observed here
+  on Lunar Lake, so `87-arcvm_seccomp.sh` still gates on Lunar Lake ids. If ARCVM hangs
+  at "Starting Play Store..." or Crostini dies the moment a GUI app opens, add
+  `arcvm_seccomp` to force the shim on.
+- **If there is still no sound, there is a one-line fallback:** add
+  `snd_intel_dspcfg.dsp_driver=1` to the kernel command line in GRUB. That forces the
+  legacy HDA driver, which needs no firmware at all; on a machine with an analog HDA
+  codec speakers and headphones come back, at the cost of everything that goes through
+  the DSP (the digital mic array). Machines whose audio is SoundWire-only have nothing
+  to fall back to.
+
+None of this has been tried on Meteor or Arrow Lake hardware — there is none here. What
+is verified is only that the right firmware and topologies now ship, and which iGPU ids
+switch the patch on (`86-intel_sof_fw.sh`).
 
 ## Building
 
@@ -193,8 +259,9 @@ Boot* below); a fork without the `BRUNCH_PRIV` / `BRUNCH_PEM` secrets set will p
 
 Pick `7.1` in `brunch-setup` at install time — in a 7.1-only build it is the only
 entry and already preselected, since the menu is generated from the kernels the build
-actually ships. The Lunar Lake patches then activate on their own; `no_lnl_mesa`,
-`no_lnl_audio_fw` and `no_arcvm_seccomp` turn them off individually.
+actually ships. The patches then activate on their own; `no_lnl_mesa`,
+`no_sof_firmware` and `no_arcvm_seccomp` turn them off individually (`no_lnl_audio_fw`,
+the name the firmware patch used while it only covered Lunar Lake, still works).
 
 ## Secure Boot
 
@@ -230,6 +297,9 @@ boot normally.
   Xe2 under a VM).
 - **One machine.** Verified on a single laptop model. The 7.1 kernel config comes from
   an Arch baseline, so hardware Arch does not enable is not covered.
+- **Meteor Lake and Arrow Lake are untested.** The SOF firmware for them ships and the
+  iGPU id gate was tested against a synthetic `/sys` tree, but no such machine has run
+  this. See *Meteor Lake and Arrow Lake*.
 - **The SoundWire audio profiles are untested on hardware.** The reference laptop has an
   HDA codec; the `sof-soundwire` cras profiles were written from the kernel driver and
   upstream UCM sources and only parse-tested. Reports from cs42l43 / cs35l56 and Realtek
