@@ -173,6 +173,17 @@ jobs:
           echo "RELEASE_TAG=${RELEASE_VERSION}-${RELEASE_VERSION_TYPE}-${RELEASE_DATE}" >> $GITHUB_ENV
           echo "RELEASE_NAME=Brunch ${RELEASE_VERSION} ${RELEASE_VERSION_TYPE} ${RELEASE_DATE}" >> $GITHUB_ENV
           echo "RELEASE_SHA256=$(sha256sum brunch_${RELEASE_VERSION}_${RELEASE_VERSION_TYPE}_${RELEASE_DATE}.tar.gz | cut -d' ' -f1)" >> $GITHUB_ENV
+      - name: Generate release notes
+        env:
+          HEAD_COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+        run: |
+          # The release body is the message of the commit that was pushed. Strip the
+          # trailers git tooling appends (Co-Authored-By, Claude-Session, ...): they are
+          # provenance for the repository, not something to publish on a release page.
+          printf '%s\n' "$HEAD_COMMIT_MESSAGE" \
+            | grep -viE '^(Co-Authored-By|Claude-Session|Signed-off-by):' > release-notes.md || true
+          printf '\nrelease_sha256sum=%s\n' "$RELEASE_SHA256" >> release-notes.md
+          cat release-notes.md
       - name: Create a release and upload artifacts as assets
         uses: ncipollo/release-action@v1
         with:
@@ -182,4 +193,4 @@ jobs:
           tag: "${{ env.RELEASE_TAG }}"
           name: "${{ env.RELEASE_NAME }}"
           commit: "${{ github.ref_name }}"
-          body: "${{ github.event.head_commit.message }}\n\nrelease_sha256sum=${{ env.RELEASE_SHA256 }}\n"
+          bodyFile: "release-notes.md"
