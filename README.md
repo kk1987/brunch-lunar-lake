@@ -74,8 +74,9 @@ pppoe flexible-array members. Where an active upstream already had the fixes, th
 was synced to it (rtl8192eu → Mange, rtl8812au / rtl8821cu → morrownr, rtl885xxx →
 morrownr/rtw89); provenance is in the commit messages. The changes are version-guarded
 or version-neutral, so 6.6 / 6.12 still build, but CI no longer builds them — run a
-`BRUNCH_KERNELS="6.6 6.12 7.1"` build before sending any of it upstream. They are
-compile-tested only.
+`BRUNCH_KERNELS="6.6 6.12 7.1"` build before sending any of it upstream. `brunch-setup`
+offers the same driver options for 7.1 as for 6.6 / 6.12. The modules are compile-tested
+only.
 
 ### Mesa 25.3.6 (`mesa-patches/`, `packages/mesa-lnl.tar.gz`, `85-mesa_lnl.sh`)
 
