@@ -107,7 +107,7 @@ for kernel in $kernels; do
 done
 }
 
-chromeos_version="R153"
+chromeos_version="R154"
 kernels="${BRUNCH_KERNELS:-7.1}"
 lnl_kernel_version="7.1.5"
 
