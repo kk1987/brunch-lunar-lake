@@ -13,7 +13,7 @@ Everyone else is better served by upstream brunch.
 **Status on Lunar Lake: it works.** OOBE, login, reboot, re-login, Play Store, Android
 apps and games, Crostini, audio and suspend all run on the reference machine, an
 **HP OmniBook X Flip** (Core Ultra 9 288V, Xe2 `8086:64A0`), with the **ChromeOS R149,
-R150 and R151 volteer** recovery images. Other Lunar Lake machines should work — the
+R150, R151 and R154 volteer** recovery images. Other Lunar Lake machines should work — the
 Lunar Lake patches key off the iGPU PCI id (`8086:6420`, `8086:64a0`, `8086:64b0`), not
 off the laptop model — but none has been tried. See *Known limitations*.
 
@@ -256,6 +256,11 @@ Boot disabled none of this matters.
 - **The Play Store can crash once after suspend/resume.** The VM survives; a venus GPU
   context can enter a fatal state on the first resume and the app using it is dropped.
   Re-opening it recovers. Timing-dependent and not reliably reproducible.
+- **After a large in-place ChromeOS version jump, Crostini may not start** — the Terminal
+  hangs at "checking for virtual machine". This is not Lunar Lake specific: the cached
+  `termina-dlc` from the old version fails verification against the new one, and the
+  reinstall can get stuck. Toggle Linux off and back on in Settings (or clear
+  `/var/cache/dlc/termina-dlc`) to force a clean reinstall. A fresh install is unaffected.
 - `mesa-patches/0003` and `0004` hide the Xe2 CCS DRM modifiers from importers. They did
   not fix the stripe noise (`0006` did) but are kept, because a consumer built against a
   pre-Lunar Lake minigbm cannot interpret those modifiers.
