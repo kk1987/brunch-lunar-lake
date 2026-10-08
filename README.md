@@ -1,161 +1,139 @@
 # brunch-unstable — Intel Lunar Lake (Xe2) fork
 
-A fork of [sebanc/brunch-unstable](https://github.com/sebanc/brunch-unstable) that adds
-support for **Intel Lunar Lake** (Core Ultra 200V, Xe2 graphics) laptops.
+A fork of [sebanc/brunch-unstable](https://github.com/sebanc/brunch-unstable) for recent
+Intel laptops that upstream brunch cannot run:
 
-Upstream brunch ships kernels 6.6 / 6.12 and the graphics userspace that comes inside
-the ChromeOS recovery image. Neither knows about Lunar Lake: the ChromeOS image carries
-Mesa < 25.2.0 (iris has no `I915_FORMAT_MOD_4_TILED_LNL_CCS`, minigbm has no `xe`
-backend), and the brunch kernel configs disable the Intel IOMMU, which these machines
-cannot boot without. This fork adds a 7.1 kernel and a Mesa 25.3.6 userspace override
-that fill both gaps, plus the ARCVM and audio fixes that fall out of them.
+| platform | what this fork provides | tested |
+|---|---|---|
+| **Lunar Lake** (Core Ultra 200V, Xe2) | 7.1 kernel, Mesa 25.3.6 graphics, ARCVM fixes, SOF audio firmware | yes, one machine |
+| **Meteor Lake** (Core Ultra 100), **Arrow Lake** (Core Ultra 200H / U / S) | 7.1 kernel, SOF audio firmware — graphics already work with the ChromeOS image's own Mesa | no |
 
-Everything here is additive: the 6.6 / 6.12 kernels and their patches are still in the
-tree, upstream behaviour on them is unchanged (with one exception: the external drivers
-were brought forward so they also build on 7.1 — see *External drivers* — and the
-6.6 / 6.12 builds compile the updated driver sources too), and every patch added here
-checks the iGPU PCI id before it does anything. **Releases, however, only ship the 7.1
-kernel**: the upstream kernels cannot boot a Lunar Lake machine (their configs disable
-the IOMMU), so building them here would only spend CI time on kernels this fork's
-audience cannot use; a full multi-kernel build remains one environment variable away
-(see *Building*).
+Everyone else is better served by upstream brunch.
 
-Two later Intel generations get a piece of this as well: **Meteor Lake and Arrow Lake**
-need the same Intel SOF firmware overlay — no ChromeOS image carries usable IPC4
-firmware for them either — and the same SoundWire UCM profiles, but nothing else, since
-their graphics run on i915 with the Mesa the ChromeOS image already ships. See *Meteor
-Lake and Arrow Lake*. Everyone else is still better served by upstream brunch.
+**Status on Lunar Lake: it works.** OOBE, login, reboot, re-login, Play Store, Android
+apps and games, Crostini, audio and suspend all run on the reference machine, an
+**HP OmniBook X Flip** (Core Ultra 9 288V, Xe2 `8086:64A0`), with the **ChromeOS R149,
+R150 and R151 volteer** recovery images. Other Lunar Lake machines should work — the
+Lunar Lake patches key off the iGPU PCI id (`8086:6420`, `8086:64a0`, `8086:64b0`), not
+off the laptop model — but none has been tried. See *Known limitations*.
 
-**Status: it works.** OOBE, login, reboot, re-login, Play Store, Android apps and games,
-Crostini, audio and suspend all run on the reference machine. See *Known limitations*
-before you rely on it.
+## Why upstream brunch does not run here
 
-## Reference hardware
+Upstream ships kernels 6.6 / 6.12 (plus an experimental 6.18) and the graphics userspace
+inside the ChromeOS recovery image. Neither knows about Lunar Lake: the image carries Mesa older than
+25.2 (iris has no `I915_FORMAT_MOD_4_TILED_LNL_CCS`, minigbm has no `xe` backend), and
+brunch's kernel configs disable the Intel IOMMU, without which these machines do not
+boot. On all three platforms, no ChromeOS image carries IPC4 audio firmware recent and
+complete enough to give sound (see *Audio firmware*).
 
-Developed and tested on an **HP OmniBook X Flip**, Core Ultra 9 288V, Xe2 `8086:64A0`,
-against the **ChromeOS R149, R150 and R151 volteer** recovery images. Other Lunar Lake
-machines should work — the Lunar Lake patches key off the iGPU PCI id (`8086:6420`,
-`8086:64a0`, `8086:64b0`), not off the laptop model — but nothing else has been tried.
+## Installing
+
+Install as with upstream brunch and pick `7.1` in `brunch-setup` — release builds ship
+only that kernel, so it is the only entry. The patches activate on their own by iGPU
+PCI id; these options override them:
+
+| option | patch | default |
+|---|---|---|
+| `no_lnl_mesa` / `lnl_mesa` | Mesa override (`85-mesa_lnl.sh`) | on for Lunar Lake |
+| `no_sof_firmware` / `sof_firmware` | SOF firmware (`86-intel_sof_fw.sh`) | on for Lunar / Meteor / Arrow Lake |
+| `no_arcvm_seccomp` / `arcvm_seccomp` | crosvm seccomp shim (`87-arcvm_seccomp.sh`) | on for Lunar Lake |
+
+`no_lnl_audio_fw` / `lnl_audio_fw`, the names the firmware patch had while it covered only
+Lunar Lake, still work.
 
 ## What this fork adds
 
 ### 7.1 kernel (`kernel-patches/7.1/`, `kernel-patches/7.1_*config`)
 
 No ChromiumOS 7.1 branch exists, so this kernel is built from a **vanilla kernel.org
-tree**. `prepare_kernels.sh` learned to fetch one and to build its config from a vendored
-distro baseline (`kernel-patches/7.1_base_config`, Arch Linux's) plus brunch's
-`brunch_configs` and the Lunar Lake additions in `7.1_extra_configs`, instead of the
-flex/CrOS assembly.
-
-The brunch patch set was forward-ported, plus four ChromeOS kernel behaviours that
-ChromeOS userspace depends on and vanilla does not have:
+tree**, with its config assembled from a vendored Arch Linux baseline
+(`7.1_base_config`), brunch's `brunch_configs` and the additions in
+`7.1_extra_configs`. Besides the forward-ported brunch patches it carries four
+ChromeOS kernel behaviours that ChromeOS userspace depends on:
 
 | patch | why |
 |---|---|
-| `mglru_sysfs_admin.patch` | ChromeOS `vm_concierge` writes the CrOS-private MGLRU sysfs admin interface. Without it concierge dies at startup, no VM starts at all, and chrome takes a SIGSEGV at login. |
-| `dm_verity_chromeos_table.patch` | `imageloader` mounts DLCs with a CrOS-private dm-verity table format (`payload=`/`hashtree=`/`alg=`/…). Vanilla dm-verity only parses upstream positional arguments, so every DLC mount fails — Crostini reports "error downloading", cras noise cancellation retries forever. |
+| `mglru_sysfs_admin.patch` | `vm_concierge` writes the CrOS-private MGLRU sysfs admin interface. Without it concierge dies at startup, no VM starts, and chrome takes a SIGSEGV at login. |
+| `dm_verity_chromeos_table.patch` | `imageloader` mounts DLCs with a CrOS-private dm-verity table format (`payload=`/`hashtree=`/`alg=`/…). Without it every DLC mount fails — Crostini reports "error downloading", cras noise cancellation retries forever. |
 | `drm_master_relax.patch` | ChromeOS relies on relaxed DRM master handover between frecon and chrome. |
-| `kvm_honor_guest_pat.patch` | See *ARCVM graphics* below. |
+| `kvm_honor_guest_pat.patch` | See *ARCVM graphics*. |
 
-Config highlights (`kernel-patches/7.1_extra_configs`, all commented in place): the
-Intel IOMMU is re-enabled over the upstream `brunch_configs` disable — Lunar Lake
-firmware hands the CPU over in locked-x2APIC mode and the kernel panics before any
-console exists without DMAR interrupt remapping — and the boot console uses
-sysfb/simpledrm rather than efifb, which on these machines maps the GOP framebuffer
-uncached and takes seconds per printk line.
+Config changes worth knowing (all commented in `7.1_extra_configs`): the Intel IOMMU is
+re-enabled, because firmware that hands the CPU over in locked x2APIC mode panics the
+kernel before any console exists unless DMAR interrupt remapping is available; and the
+boot console uses sysfb/simpledrm instead of efifb, which on these machines maps the
+framebuffer uncached and takes seconds per printk line.
 
 ### External drivers (`external-drivers/`)
 
-Upstream brunch builds its 13 out-of-tree modules (Realtek Wi-Fi, broadcom-wl,
-acpi_call, ipts, ithc) only for kernels 6.6 / 6.12, so on 7.1 they were skipped
-entirely. This fork ports all of them to the vanilla 7.1 tree. The recurring breakage:
-kbuild dropped `EXTRA_CFLAGS`, the `del_timer*` / `from_timer` removals, the 6.14
-`link_id` and 6.17 `radio_idx` cfg80211 arguments, 7.1 passing `struct wireless_dev *`
-to the cfg80211 key/station ops, and 7.1 hiding the pppoe flexible-array members from
-kernel code. Where an active upstream already carried the fixes, the vendored copy was
-synced to it (rtl8192eu → Mange, rtl8812au / rtl8821cu → morrownr, rtl885xxx →
-morrownr/rtw89); the rest is version-guarded compat, with per-change provenance in the
-commit messages. All changes are kernel-version-guarded or version-neutral, so the
-6.6 / 6.12 builds keep working — but since the default build went 7.1-only, CI no
-longer exercises them; verify with a `BRUNCH_KERNELS="6.6 6.12 7.1"` build before
-sending any of this upstream. On 7.1 the in-tree rtw89 already
-covers the rtl885xxx hardware; the external copy is kept so every kernel ships the
-same module set.
+Upstream builds its 13 out-of-tree modules (Realtek Wi-Fi, broadcom-wl, acpi_call, ipts,
+ithc) only for 6.6 / 6.12. They are ported to 7.1: kbuild dropping `EXTRA_CFLAGS`, the
+`del_timer*` / `from_timer` removals, the 6.14 `link_id` and 6.17 `radio_idx` cfg80211
+arguments, 7.1's `struct wireless_dev *` in the key/station ops, and 7.1 hiding the
+pppoe flexible-array members. Where an active upstream already had the fixes, the copy
+was synced to it (rtl8192eu → Mange, rtl8812au / rtl8821cu → morrownr, rtl885xxx →
+morrownr/rtw89); provenance is in the commit messages. The changes are version-guarded
+or version-neutral, so 6.6 / 6.12 still build, but CI no longer builds them — run a
+`BRUNCH_KERNELS="6.6 6.12 7.1"` build before sending any of it upstream. They are
+compile-tested only.
 
-### Mesa 25.3.6 userspace (`mesa-patches/`, `packages/mesa-lnl.tar.gz`, `85-mesa_lnl.sh`)
+### Mesa 25.3.6 (`mesa-patches/`, `packages/mesa-lnl.tar.gz`, `85-mesa_lnl.sh`)
 
 Replaces libgallium (iris), libEGL, libvulkan_intel (ANV) and **libgbm** in the running
 image. libgbm is the awkward one: on ChromeOS `libgbm.so.1` *is* minigbm, and Chrome,
-crosvm, virglrenderer and libcros_camera are all compiled against minigbm's `gbm.h`,
-which is not ABI-compatible with Mesa's. `mesa-patches/` carries the shim that bridges
-that, and [`mesa-patches/README.md`](mesa-patches/README.md) documents each patch, the
-bug it fixes and how it was measured.
-
-The package rebuilds from the six patches plus `brunch_minigbm_compat.c` against a
-pristine `mesa-25.3.6.tar.xz`; `diff -rq` against the tree it was built from reports no
-differences.
+crosvm, virglrenderer and libcros_camera are compiled against minigbm's `gbm.h`, which
+is not ABI-compatible with Mesa's. `mesa-patches/` carries the shim that bridges the two;
+[`mesa-patches/README.md`](mesa-patches/README.md) documents each patch, the bug it
+fixes and how it was measured. The package rebuilds from a pristine
+`mesa-25.3.6.tar.xz`, the six patches and `brunch_minigbm_compat.c` with no
+differences (`diff -rq`).
 
 ### ARCVM graphics
 
-Three separate bugs had to be fixed before Android apps rendered correctly. All three
-are upstream bugs, not brunch ones:
+Three bugs, all upstream rather than brunch ones, had to be fixed before Android apps
+rendered correctly:
 
 1. **venus fences never complete** → SurfaceFlinger hangs, Play Store restart-loops.
-   KVM's `KVM_X86_QUIRK_IGNORE_GUEST_PAT` forces write-back and the guest's
+   KVM's `KVM_X86_QUIRK_IGNORE_GUEST_PAT` forces write-back, so the guest's
    write-combining mappings never see host fence writes. QEMU has
-   `-accel kvm,honor-guest-pat=on`; crosvm has no such switch, so this is a kernel
-   patch (`kvm_honor_guest_pat.patch`).
-2. **Stray geometry drawn over an otherwise correct frame** — on Xe2, ANV silently drops
-   `HOST_CACHED` for any exportable bo and hands out an uncached scanout PAT entry,
-   while the importer maps the same memory type write-back. Every buffer venus gives a
-   guest is exportable. (`mesa-patches/0002`)
+   `-accel kvm,honor-guest-pat=on`; crosvm has no such switch, hence
+   `kvm_honor_guest_pat.patch`.
+2. **Stray geometry over an otherwise correct frame** — on Xe2, ANV drops `HOST_CACHED`
+   for any exportable bo and hands out an uncached scanout PAT entry, while the importer
+   maps the same memory write-back. Every buffer venus gives a guest is exportable.
+   (`mesa-patches/0002`)
 3. **Every ARC window rendered as vertical stripe noise** — ANV placing bos in
-   compressed PAT memory, which is broken under an ARCVM guest. (`mesa-patches/0006`)
+   compressed PAT memory, which is broken inside an ARCVM guest. (`mesa-patches/0006`)
 
-`87-arcvm_seccomp.sh` additionally neutralizes the crosvm seccomp filters. The ChromeOS
-crosvm binary embeds pre-compiled seccomp BPFs built for the volteer image; they lag
-crosvm's own tube code and SIGSYS-kill the virtio-fs/gpu device workers on
-`recvfrom`/`recvmsg`, tearing ARCVM down before the Play Store can start.
-The same stale filters also kill termina/Crostini: its virtio-wl worker dies on
-`recvfrom` the moment a GUI app connects through sommelier, taking the whole VM down
-(the terminal is unaffected because vsh runs over vsock, never touching virtio-wl).
-`--seccomp-policy-dir` does not override these embedded filters for the device workers
-in the shipped build, so the patch preloads a small shim (`arcvm-noseccomp/`) into
-crosvm for concierge-managed VMs (ARCVM and termina) that no-ops the seccomp filter
-installation while leaving every other minijail jailing — namespaces, ugid map, caps,
-rlimits — intact.
+`87-arcvm_seccomp.sh` additionally disables crosvm's seccomp filters. The crosvm binary
+in the volteer image embeds pre-compiled BPFs that lag crosvm's own code: they SIGSYS-kill
+the virtio-fs / virtio-gpu workers on `recvfrom` / `recvmsg` before the Play Store can
+start, and kill termina's virtio-wl worker the moment a Crostini GUI app connects (the
+terminal survives because vsh runs over vsock). `--seccomp-policy-dir` does not override
+the embedded filters for device workers, so the patch preloads a shim
+(`arcvm-noseccomp/`) into crosvm for ARCVM and termina that makes seccomp filter
+installation a no-op and leaves the rest of the minijail sandbox — namespaces, ugid map,
+caps, rlimits — intact.
 
-### Audio (`86-intel_sof_fw.sh`, `packages/intel-sof-fw.tar.gz`)
+### Audio firmware (`86-intel_sof_fw.sh`, `packages/intel-sof-fw.tar.gz`)
 
-`build_brunch.sh` assembles brunch's firmware package from a linux-firmware checkout
-plus the `lib/firmware/intel/sof*` directories of the ChromeOS rootfs it builds against.
-linux-firmware no longer carries any Intel SOF firmware (its WHENCE lists none), so the
-Intel SOF files in `packages/firmwares.tar.gz` come from the ChromeOS rootfs alone:
+Lunar, Meteor and Arrow Lake are IPC4-only, and `snd-intel-dspcfg` picks SOF over the
+legacy HDA driver whenever a machine has digital mics or SoundWire links — nearly every
+laptop. brunch's Intel SOF files come only from the ChromeOS rootfs it builds against
+(linux-firmware no longer carries any), and none of those is enough:
 
-- CI builds use the ChromeOS Flex (reven) rootfs, which ships an IPC4 set, but an old
-  one: SOF 2.12 (March 2025) as of R150, with a thinner topology set (no
-  `sof-lnl-dmic-*`, `sof-sdca-*`, `sof-ptl-*`, ...).
-- A build against a Chromebook recovery image (volteer etc.) gets IPC3 only
-  (`intel/sof`, `intel/sof-tplg`): no `intel/sof-ipc4` at all, and Lunar Lake has no
-  sound.
-- A build against a *Meteor Lake* Chromebook image (rex) does not fix this either.
-  ChromeOS keeps its firmware in per-model directories
-  (`intel/sof-ipc4/mtl/{community,karis}/sof-mtl.ri`, not the
-  `intel/sof-ipc4/mtl/sof-mtl.ri` `pci-mtl.c` asks for), keeps its topologies in
-  `intel/sof-ace-tplg` rather than `intel/sof-ipc4-tplg`, and ships only the four
-  topologies that board itself uses. `build_brunch.sh` copies those paths verbatim.
+- the ChromeOS Flex (reven) rootfs used by CI has an old IPC4 set — SOF 2.12, March
+  2025, as of R150 — without the newer topologies (`sof-lnl-dmic-*`, `sof-sdca-*`, …);
+- a volteer recovery image has IPC3 only, so Lunar Lake has no sound;
+- even a Meteor Lake Chromebook image (rex) does not help: it keeps its firmware in
+  per-model directories (`intel/sof-ipc4/mtl/{community,karis}/`), its topologies in
+  `intel/sof-ace-tplg`, and only the four topologies that board uses.
 
-`86-intel_sof_fw.sh` therefore overlays a current sof-bin release, after
-`50-add_generic_firmwares.sh` so its files replace the rootfs copy:
+`86-intel_sof_fw.sh` therefore overlays, after `50-add_generic_firmwares.sh`,
 `intel/sof-ipc4/{lnl,mtl,arl,arl-s}`, `intel/sof-ipc4-lib/lnl` and the whole
-`intel/sof-ipc4-tplg`
-directory of [sof-bin v2025.12.2](https://github.com/thesofproject/sof-bin/releases/tag/v2025.12.2)
-(SOF 2.14.1), uncompressed and byte-for-byte as released — that release has no
-`sof-ipc4-lib` for anything but `lnl`, and its `arl` / `arl-s` firmware is mostly
-symlinks into `mtl`. The patch triggers on Lunar Lake, Meteor Lake and Arrow Lake iGPU
-ids; the topology directory covers PTL / WCL as well, but no firmware for those is
-shipped, since their graphics do not work here yet. To regenerate the package from a
-sof-bin release:
+`intel/sof-ipc4-tplg` directory of
+[sof-bin v2025.12.2](https://github.com/thesofproject/sof-bin/releases/tag/v2025.12.2)
+(SOF 2.14.1), byte-for-byte as released. To regenerate the package:
 
 ```sh
 curl -LO https://github.com/thesofproject/sof-bin/releases/download/v2025.12.2/sof-bin-2025.12.2.tar.gz
@@ -169,73 +147,60 @@ cp -a sof-bin-2025.12.2/sof-ipc4-tplg    stage/lib/firmware/intel/
 tar -C stage --sort=name -czf packages/intel-sof-fw.tar.gz lib --owner=0 --group=0
 ```
 
-#### SoundWire codecs (`alsa-ucm-conf/ucm2/sof-soundwire/`)
+### SoundWire UCM profiles (`alsa-ucm-conf/ucm2/sof-soundwire/`)
 
-Most Lunar Lake laptops (and the Meteor/Arrow Lake Dell XPS line) do not use an HDA
-codec: audio is a SoundWire **cs42l43** headset codec plus **cs35l56** amplifiers,
-registered by the kernel as the `sof-soundwire` card. The card probes fine and still
-produces no sound, because the alsa-ucm-conf release brunch has to ship (1.2.8, the
-one ChromeOS's alsa-lib can parse) has no profile for these codecs — the UCM fails to
-load, and without one cras guesses nodes from mixer control names, which are all
-prefixed on these codecs, so it ends up with a phantom "Speaker" on the headphone PCM.
-The overlay adds cras-specific profiles (fully specified PCM numbers, jack input
-devices, amplifier switches) for the Cirrus SoundWire combinations and for every Realtek
-SoundWire part in the 7.1 Intel machine tables (rt711, rt712, rt713, rt721, rt722, the
-rt1308 / rt1316 / rt1318 / rt1320 amplifiers, the rt715 / rt1712 / rt1713 microphone
-parts), written against the 7.1 kernel drivers and the upstream alsa-ucm-conf 1.2.16
-profiles and parse-tested against alsa-lib 1.2.8. Anything else keeps the upstream 1.2.8
-behaviour.
-See [`alsa-ucm-conf/ucm2/sof-soundwire/cras/README.md`](alsa-ucm-conf/ucm2/sof-soundwire/cras/README.md).
+Many recent Intel laptops connect their audio codecs over SoundWire instead of HDA:
+a Cirrus Logic **cs42l43** headset codec with **cs35l56** amplifiers (the Meteor and
+Arrow Lake Dell XPS models, for instance), or Realtek parts such as rt711 / rt712 /
+rt722 with rt13xx amplifiers. The kernel registers these as the `sof-soundwire` card,
+which probes fine and still produces no sound: the alsa-ucm-conf release brunch ships
+must match ChromeOS's alsa-lib (1.2.8 through R151), and that release has no profile for
+these codecs. Without a UCM, cras guesses its nodes from mixer control names, which on
+these codecs are all prefixed, and ends up with a phantom "Speaker" on the headphone PCM.
+
+The overlay adds cras profiles for the Cirrus combinations and for every Realtek
+SoundWire part in the 7.1 Intel machine tables, written from the 7.1 drivers and the
+upstream alsa-ucm-conf 1.2.16 profiles and parse-tested against alsa-lib 1.2.8. Other
+cards keep the stock behaviour. The reference laptop has an HDA codec, so none of these
+profiles has run on hardware. Details:
+[`alsa-ucm-conf/ucm2/sof-soundwire/cras/README.md`](alsa-ucm-conf/ucm2/sof-soundwire/cras/README.md).
+
+### `chromeos-update` (`99-updater.sh`)
+
+`-r` no longer goes through a loop device: it copies the recovery image's ROOT-A
+straight from the file at the offset `cgpt` reports, and marks the update as pending
+only after the copy succeeded. Previously a failed copy still flipped the partition
+priorities, and the next boot rebuilt ROOT-A from the stale ROOT-B. `-f` checks its
+writes too.
 
 ## Meteor Lake and Arrow Lake
 
-Meteor Lake (Core Ultra 100) and Arrow Lake (Core Ultra 200H / U / S) need far less than
-Lunar Lake does, because unlike Lunar Lake they are generations ChromeOS itself supports.
-Both run on **i915**, not `xe` — 7.1's `xe` driver still marks them
-`require_force_probe`, and brunch's kernel configs set `CONFIG_DRM_I915_FORCE_PROBE="*"`
-— and the Mesa 24.2.3 inside the ChromeOS image already knows them: the
-`libgallium_dri.so` of a volteer R149 image carries the `Intel(R) Arc(tm) Graphics (MTL)`
-and `Intel(R) Graphics (ARL)` device entries. The Mesa override in this fork therefore
-does not apply and does not switch on — `85-mesa_lnl.sh` checks for a Lunar Lake iGPU id
-first. Do not force it on with `lnl_mesa`: the minigbm ABI shim and the chrome flags in
-that package were built and measured for Xe2 alone.
+These need far less than Lunar Lake, because ChromeOS itself supports them. Both run on
+**i915** (7.1's `xe` still marks them `require_force_probe`, and brunch sets
+`CONFIG_DRM_I915_FORCE_PROBE="*"`), and the Mesa 24.2.3 in a volteer R149 image already
+lists `Intel(R) Arc(tm) Graphics (MTL)` and `Intel(R) Graphics (ARL)`. So the Mesa
+override stays off; do not force it with `lnl_mesa`, since its minigbm shim and chrome
+flags were built and measured for Xe2 only. What carries over is the audio: the SOF
+firmware patch triggers on their iGPU ids, and the SoundWire profiles are installed on
+every machine.
 
-What does carry over is audio, for exactly the reason it does on Lunar Lake:
+Before trying it:
 
-- **SOF firmware.** MTL and ARL are IPC4-only, and `snd-intel-dspcfg` picks SOF over the
-  legacy HDA driver whenever the machine has digital mics or SoundWire links
-  (`FLAG_SOF_ONLY_IF_DMIC_OR_SOUNDWIRE`, `sound/hda/core/intel-dsp-config.c`) — nearly
-  every laptop. With no `intel/sof-ipc4` in the image, SOF has nothing to load and the
-  machine is silent. `86-intel_sof_fw.sh` installs the firmware for these platforms too
-  and triggers on their iGPU ids.
-- **SoundWire UCM profiles.** They were written from the 7.1 Intel machine tables, which
-  cover Meteor / Lunar / Arrow / Panther Lake, and `50-add_generic_firmwares.sh`
-  installs them unconditionally — no PCI id gate at all.
+- **The IOMMU is enabled in this kernel**, as on Lunar Lake. Whether a machine needs it
+  is a firmware property, not a generational one: `sudo rdmsr 0xBD` (msr-tools, from any
+  Linux) with bit 0 set means legacy xAPIC is disabled and the IOMMU is required.
+- **ARCVM may need `arcvm_seccomp`.** The stale crosvm filters belong to the ChromeOS
+  image, not the CPU, but have only been observed on Lunar Lake, so the shim is gated on
+  Lunar Lake ids. If ARCVM hangs at "Starting Play Store..." or Crostini dies when a GUI
+  app opens, add the option.
+- **If there is still no sound**, add `snd_intel_dspcfg.dsp_driver=1` to the kernel
+  command line in GRUB. That forces the legacy HDA driver, which needs no firmware: a
+  machine with an analog HDA codec gets speakers and headphones back, but not the
+  digital mic array. A SoundWire-only machine has nothing to fall back to.
 
-Three things worth knowing before trying it:
-
-- **The Intel IOMMU is enabled in this kernel.** Upstream brunch's configs disable it,
-  and a machine whose firmware hands the CPU over in locked x2APIC mode cannot boot
-  without DMAR interrupt remapping. That is a firmware property rather than a
-  generational one — it is universal on Lunar Lake, and some Meteor / Arrow Lake laptops
-  are in the same position. `sudo rdmsr 0xBD` (msr-tools, from any Linux) answers it:
-  bit 0 set means legacy xAPIC is disabled, so the IOMMU is required. This fork's kernel
-  enables it either way.
-- **ARCVM may need the `arcvm_seccomp` option.** The stale crosvm seccomp filters are a
-  property of the ChromeOS image, not of the CPU, but they have only been observed here
-  on Lunar Lake, so `87-arcvm_seccomp.sh` still gates on Lunar Lake ids. If ARCVM hangs
-  at "Starting Play Store..." or Crostini dies the moment a GUI app opens, add
-  `arcvm_seccomp` to force the shim on.
-- **If there is still no sound, there is a one-line fallback:** add
-  `snd_intel_dspcfg.dsp_driver=1` to the kernel command line in GRUB. That forces the
-  legacy HDA driver, which needs no firmware at all; on a machine with an analog HDA
-  codec speakers and headphones come back, at the cost of everything that goes through
-  the DSP (the digital mic array). Machines whose audio is SoundWire-only have nothing
-  to fall back to.
-
-None of this has been tried on Meteor or Arrow Lake hardware — there is none here. What
-is verified is only that the right firmware and topologies now ship, and which iGPU ids
-switch the patch on (`86-intel_sof_fw.sh`).
+Nothing here has run on Meteor or Arrow Lake hardware. What is verified is that the
+firmware and topologies ship and which iGPU ids enable the patch (tested against a
+synthetic `/sys` tree).
 
 ## Building
 
@@ -247,92 +212,76 @@ Same as upstream:
 sudo bash build_brunch.sh <recovery_image.bin>
 ```
 
-`prepare_kernels.sh` prepares only `7.1` by default — the kernel this fork is about.
-Run `BRUNCH_KERNELS="6.6 6.12 6.18 7.1" ./prepare_kernels.sh` for a full upstream-style
-build; 6.6 / 6.12 support has not been removed, it is just not built by default.
+`prepare_kernels.sh` prepares only `7.1` by default, and the CI kernel matrix follows
+it, so releases are 7.1-only. `BRUNCH_KERNELS="6.6 6.12 6.18 7.1" ./prepare_kernels.sh`
+gives a full upstream-style build; the `brunch-setup` kernel menu is generated from the
+kernels the build actually ships.
 
-GitHub Actions builds on push (`.github/workflows/build.yml`); its kernel matrix comes
-from whatever `prepare_kernels.sh` prepared, so CI and releases are 7.1-only too.
-Release kernels are signed with this fork's own key (see *Secure
-Boot* below); a fork without the `BRUNCH_PRIV` / `BRUNCH_PEM` secrets set will produce
-**unsigned** kernels, which boot fine but cannot be used with Secure Boot.
-
-Pick `7.1` in `brunch-setup` at install time — in a 7.1-only build it is the only
-entry and already preselected, since the menu is generated from the kernels the build
-actually ships. The patches then activate on their own; `no_lnl_mesa`,
-`no_sof_firmware` and `no_arcvm_seccomp` turn them off individually (`no_lnl_audio_fw`,
-the name the firmware patch used while it only covered Lunar Lake, still works).
+GitHub Actions builds and publishes a release on every push
+(`.github/workflows/build.yml`). Release kernels are signed with this fork's key; a fork
+without the `BRUNCH_PRIV` / `BRUNCH_PEM` secrets produces **unsigned** kernels, which
+boot fine but not under Secure Boot.
 
 ## Secure Boot
 
-The boot chain is: Microsoft-signed Debian shim (`bootx64.efi`) → GRUB, signed by
-upstream brunch's key → kernel, signed by **this fork's** key (upstream cannot share its
-private key, so forks sign kernels themselves). Two certificates therefore have to be
-enrolled in MOK, and both ship at the root of the EFI partition:
+The chain is: Microsoft-signed Debian shim (`bootx64.efi`) → GRUB, signed by upstream
+brunch's key → kernel, signed by **this fork's** key (upstream cannot share its private
+key). Both certificates ship at the root of the EFI partition and both must be enrolled
+in MOK:
 
-- `brunch.der` — upstream brunch's certificate, verifies GRUB
+- `brunch.der` — upstream's certificate, verifies GRUB
 - `brunch-lnl.der` — this fork's certificate, verifies the kernels
 
-Enroll them either from a Linux system:
+Either from Linux:
 
 ```sh
 sudo mokutil --import brunch.der
 sudo mokutil --import brunch-lnl.der
 ```
 
-or directly at the blue "Verification failed" screen on the first Secure Boot boot:
-OK → Enroll key from disk → EFI-SYSTEM → select each `.der` in turn → Continue, reboot.
-
-With Secure Boot disabled none of this matters — unsigned or differently-signed kernels
-boot normally.
+or at the blue "Verification failed" screen on the first Secure Boot boot: OK → Enroll
+key from disk → EFI-SYSTEM → select each `.der` in turn → Continue, reboot. With Secure
+Boot disabled none of this matters.
 
 ## Known limitations
 
-- **"Sign in with your Android phone" does not work** at OOBE. Sign in with a
-  password instead. Not chased down, and not established as Lunar Lake specific.
-- **ARCVM Play Store can crash once after suspend/resume.** The VM survives (crosvm
-  keeps running); a venus GPU context can enter a fatal state on the first resume and
-  the Android app using it is dropped, so re-opening it recovers. Timing-dependent and
-  not reliably reproducible. Same family as the ARCVM graphics bugs above (venus/ANV on
-  Xe2 under a VM).
-- **One machine.** Verified on a single laptop model. The 7.1 kernel config comes from
+- **One machine.** Only the reference laptop has run this. The kernel config comes from
   an Arch baseline, so hardware Arch does not enable is not covered.
-- **Meteor Lake and Arrow Lake are untested.** The SOF firmware for them ships and the
-  iGPU id gate was tested against a synthetic `/sys` tree, but no such machine has run
-  this. See *Meteor Lake and Arrow Lake*.
-- **The SoundWire audio profiles are untested on hardware.** The reference laptop has an
-  HDA codec; the `sof-soundwire` cras profiles were written from the kernel driver and
-  upstream UCM sources and only parse-tested. Reports from cs42l43 / cs35l56 and Realtek
-  SoundWire machines (`cras` messages in `/var/log/messages`, `amixer -c0 controls`) are
-  what they need.
-- `mesa-patches/0003` and `0004` de-advertise the Xe2 CCS DRM modifiers to any importer.
-  They are not what fixed the stripe-noise bug (`0006` was), but they are kept: any
-  consumer using a minigbm older than Lunar Lake cannot interpret those modifiers.
-- Cosmetic leftovers seen in logs and not chased down: `unknown rutabaga path` from
-  crosvm, ~60 virglrenderer `GL error (1282)` lines during ARCVM startup, and NV12
-  128×128 `bo_create` failures believed to come from the ARC camera stack.
+- **Meteor Lake, Arrow Lake and the SoundWire profiles are untested on hardware.**
+  Reports help — for audio, the `cras` lines in `/var/log/messages` and
+  `amixer -c0 controls`.
+- **"Sign in with your Android phone" does not work** at OOBE; use a password. Not
+  investigated, and not known to be Lunar Lake specific.
+- **The Play Store can crash once after suspend/resume.** The VM survives; a venus GPU
+  context can enter a fatal state on the first resume and the app using it is dropped.
+  Re-opening it recovers. Timing-dependent and not reliably reproducible.
+- `mesa-patches/0003` and `0004` hide the Xe2 CCS DRM modifiers from importers. They did
+  not fix the stripe noise (`0006` did) but are kept, because a consumer built against a
+  pre-Lunar Lake minigbm cannot interpret those modifiers.
+- Log noise not chased down: `unknown rutabaga path` from crosvm, ~60 virglrenderer
+  `GL error (1282)` lines during ARCVM startup, and NV12 128×128 `bo_create` failures
+  believed to come from the ARC camera stack.
 
 ## Upstream bugs found here
-
-Worth reporting, and worth knowing about if you hit them elsewhere:
 
 - **Mesa/ANV** — `HOST_CACHED` dropped for exportable bos on Xe2 (`0002`).
 - **Mesa/ANV** — bos in compressed PAT memory are corrupt inside a VM guest (`0006`).
   Only the location is established, not the mechanism: on the host, compression round
   trips cleanly in every test.
 - **Mesa/ANV and Mesa/iris** — both advertise the Xe2 CCS modifiers to importers that
-  cannot decode them, and each has its own independent modifier filter, so a fix to the
-  shared ISL code reaches only ANV (`0003`, `0004`).
+  cannot decode them, and each has its own modifier filter, so a fix in the shared ISL
+  code reaches only ANV (`0003`, `0004`).
 - **brunch** — `brunch-patches/82-features.sh:31` writes
   `--enable-hardware-overlays="single-fullscreen,single-on-top"`; the quotes end up
-  inside the flag value, so Chrome rejects both strategies (`overlay_strategy.cc`) and
-  hardware overlays are silently off. Left as upstream wrote it, so this fork stays
-  comparable.
+  inside the flag value, Chrome rejects both strategies (`overlay_strategy.cc`), and
+  hardware overlays are silently off. Left as upstream wrote it.
+- **brunch** — `chromeos-update -r` flips the partition priorities even when copying
+  the recovery image failed (fixed here, see *`chromeos-update`*).
 
 ## Credit
 
-All of brunch is [sebanc](https://github.com/sebanc)'s work; this fork only adds a
-platform. Please send general brunch issues and pull requests upstream — file things
-here only if they are Lunar Lake specific.
+All of brunch is [sebanc](https://github.com/sebanc)'s work; this fork only adds
+platforms. Please send general brunch issues and pull requests upstream, and file
+issues here only for what is specific to this fork.
 
 The releases in this repository are experimental. Use at your own risk.

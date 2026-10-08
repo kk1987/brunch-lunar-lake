@@ -10,7 +10,7 @@ upstream files of the same path in `packages/alsa-ucm-conf.tar.gz`, and this
 ## Cirrus Logic SoundWire codecs under cras
 
 Laptops whose audio is a SoundWire `cs42l43` headset codec with `cs35l56`
-amplifiers (most Lunar Lake designs, Meteor/Arrow Lake Dell XPS, …) probe fine
+amplifiers (the Meteor/Arrow Lake Dell XPS models, for instance) probe fine
 in the kernel — SOF firmware boots, `sof-soundwire` registers its PCMs and
 jacks — and still have no sound on brunch. Two things go wrong in userspace:
 
