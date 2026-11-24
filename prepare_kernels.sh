@@ -63,12 +63,12 @@ for kernel in $kernels; do
 		;;
 		6.18)
 			echo "Downloading latest mainline kernel source for kernel $kernel"
-			curl -L $(curl -s https://www.kernel.org/releases.json | sed 's@ @@g' | grep '^"source"' | grep linux-$kernel | cut -d '"' -f4) -o "./kernels/experimental-$kernel.tar.xz" || { echo "Kernel source download failed"; exit 1; }
-			mkdir "./kernels/experimental-$kernel"
-			tar -C "./kernels/experimental-$kernel" -xf "./kernels/experimental-$kernel.tar.xz" --strip 1 || { echo "Kernel $kernel source extraction failed"; exit 1; }
-			rm -f "./kernels/experimental-$kernel.tar.xz"
-			apply_patches "experimental-$kernel"
-			make_config "experimental-$kernel" "generic"
+			curl -L $(curl -s https://www.kernel.org/releases.json | sed 's@ @@g' | grep '^"source"' | grep linux-$kernel | cut -d '"' -f4) -o "./kernels/$kernel.tar.xz" || { echo "Kernel source download failed"; exit 1; }
+			mkdir "./kernels/$kernel"
+			tar -C "./kernels/$kernel" -xf "./kernels/$kernel.tar.xz" --strip 1 || { echo "Kernel $kernel source extraction failed"; exit 1; }
+			rm -f "./kernels/$kernel.tar.xz"
+			apply_patches "$kernel"
+			make_config "$kernel" "generic"
 		;;
 		6.12|6.6)
 			kernel_remote_path="$(git ls-remote https://chromium.googlesource.com/chromiumos/third_party/kernel/ | grep "refs/heads/release-$chromeos_version" | head -1 | sed -e 's#.*\t##' -e 's#chromeos-.*##' | sort -u)chromeos-"
@@ -107,11 +107,11 @@ for kernel in $kernels; do
 done
 }
 
-chromeos_version="R156"
+chromeos_version="R159"
 kernels="${BRUNCH_KERNELS:-7.1}"
 lnl_kernel_version="7.1.5"
 
-for kernel in $kernels; do rm -rf "./kernels/$kernel" "./kernels/chromebook-$kernel" "./kernels/experimental-$kernel"; done
+for kernel in $kernels; do rm -rf "./kernels/$kernel" "./kernels/chromebook-$kernel"; done
 mkdir -p ./kernels
 
 download_and_patch_kernels

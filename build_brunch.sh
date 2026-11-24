@@ -26,7 +26,7 @@ if [ -f ../chromiumos-stage3/chromiumos_stage3.tar.gz ]; then
 	echo "Using local ChromiumOS Stage3"
 	cp ../chromiumos-stage3/chromiumos_stage3.tar.gz ./out/chromiumos_stage3.tar.gz || { echo "Failed to copy the brunch toolchain"; exit 1; }
 else
-	curl -L https://github.com/sebanc/chromiumos-stage3/releases/download/r154-20261009/chromiumos_stage3_r154_20261009.tar.gz -o ./out/chromiumos_stage3.tar.gz || { echo "Failed to download the brunch toolchain"; exit 1; }
+	curl -L https://github.com/sebanc/chromiumos-stage3/releases/download/r158-20261122/chromiumos_stage3_r158_20261122.tar.gz -o ./out/chromiumos_stage3.tar.gz || { echo "Failed to download the brunch toolchain"; exit 1; }
 fi
 tar zxf ./out/chromiumos_stage3.tar.gz -C ./chroot || { echo "Failed to extract the brunch toolchain"; exit 1; }
 rm -f ./out/chromiumos_stage3.tar.gz
@@ -43,7 +43,7 @@ if [ ! -z $1 ] && [ "$1" != "skip" ] ; then
 else
 	git clone --depth=1 -b master https://github.com/sebanc/chromeos-ota-extract.git rootfs || { echo "Failed to clone chromeos-ota-extract"; exit 1; }
 	cd rootfs
-	curl -L https://dl.google.com/chromeos/reven/16805.31.0/stable-channel/chromeos_16805.31.0_reven_stable-channel_full_RevenMPKeys-v11.bin-gzqweyrwmezghmue3dww6n2xpcepp3y2.signed -o ./update.signed || { echo "Failed to Download the OTA update"; exit 1; }
+	curl -L https://dl.google.com/chromeos/reven/16868.24.0/stable-channel/chromeos_16868.24.0_reven_stable-channel_full_RevenMPKeys-v11.bin-gzqwmytgmvrdomkjj2umr6gsaqjysffe.signed -o ./update.signed || { echo "Failed to Download the OTA update"; exit 1; }
 	PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python python3 extract_android_ota_payload.py ./update.signed || { echo "Failed to extract the OTA update"; exit 1; }
 	cd ..
 	[ -f ./rootfs/root.img ] || { echo "ChromeOS rootfs has not been extracted"; exit 1; }
@@ -76,14 +76,15 @@ chown -R 1000:1000 ./chroot/home/chronos/initramfs || { echo "Failed to fix init
 
 mkdir ./chroot/home/chronos/rootc || { echo "Failed to create rootc directory"; exit 1; }
 # settings.cfg ships kernel="/kernel", so this symlink is what the default grub
-# entry boots. 6.12 stays the default whenever it was built; a partial build
-# (BRUNCH_KERNELS) falls back to the newest generic kernel present, rather than
-# leaving a dangling symlink that fails to boot before brunch-setup is run.
-default_kernel="6.12"
+# entry boots. 6.18 (upstream's default) stays the default whenever it was
+# built; a partial build (BRUNCH_KERNELS) falls back to the newest generic
+# kernel present, rather than leaving a dangling symlink that fails to boot
+# before brunch-setup is run.
+default_kernel="6.18"
 if [ ! -d "./kernels/$default_kernel" ]; then
-	default_kernel="$(echo "$kernels" | tr ' ' '\n' | grep -v '^chromebook-\|^experimental-' | sort -V | tail -1)"
+	default_kernel="$(echo "$kernels" | tr ' ' '\n' | grep -v '^chromebook-' | sort -V | tail -1)"
 	[ ! -z "$default_kernel" ] || { echo "No generic kernel found to use as the default"; exit 1; }
-	echo "Kernel 6.12 was not built, defaulting to kernel $default_kernel"
+	echo "Kernel 6.18 was not built, defaulting to kernel $default_kernel"
 fi
 ln -s kernel-"$default_kernel" ./chroot/home/chronos/rootc/kernel || { echo "Failed to make the default kernel symlink"; exit 1; }
 # brunch-setup's kernel menu must only offer kernels shipped in this build —
@@ -91,13 +92,10 @@ ln -s kernel-"$default_kernel" ./chroot/home/chronos/rootc/kernel || { echo "Fai
 # dangling entry that fails to boot. Default kernel first: the menu
 # preselects the first entry.
 available_kernels="$default_kernel"
-for k in $(echo "$kernels" | tr ' ' '\n' | grep -v '^chromebook-\|^experimental-' | sort -rV); do
+for k in $(echo "$kernels" | tr ' ' '\n' | grep -v '^chromebook-' | sort -rV); do
 	[ "$k" == "$default_kernel" ] || available_kernels="$available_kernels;$k"
 done
 for k in $(echo "$kernels" | tr ' ' '\n' | grep '^chromebook-' | sort -rV); do
-	available_kernels="$available_kernels;$k"
-done
-for k in $(echo "$kernels" | tr ' ' '\n' | grep '^experimental-' | sort -rV); do
 	available_kernels="$available_kernels;$k"
 done
 sed -i "s@^available_kernels=.*@available_kernels=\"$available_kernels\"@" ./chroot/home/chronos/initramfs/sbin/brunch-setup || { echo "Failed to set the kernel list in brunch-setup"; exit 1; }
@@ -305,6 +303,7 @@ git clone --depth=1 -b v$(LD_LIBRARY_PATH=../../chromeos/lib64:../../chromeos/us
 rm -r ./alsa-ucm-conf/.github ./alsa-ucm-conf/.gitignore ./alsa-ucm-conf/LICENSE ./alsa-ucm-conf/README.md ./alsa-ucm-conf/VERSION || { echo "Failed to clone the alsa-ucm-conf git"; exit 1; }
 sed -i 's@Define.V1 ""@Define.V1 yes@g' ./alsa-ucm-conf/ucm2/ucm.conf || { echo "Failed to modify ucm configuration"; exit 1; }
 cp -rT ../../chromeos/usr/share/alsa/ucm ./alsa-ucm-conf/ucm || { echo "Failed to copy ChromeOS ucm configurations"; exit 1; }
+cp -rT --remove-destination ../../chromeos/usr/share/alsa/ucm2/conf.d ./alsa-ucm-conf/ucm2/conf.d || { echo "Failed to copy ChromeOS ucm configurations"; exit 1; }
 cp -rT ../../../alsa-ucm-conf ./alsa-ucm-conf || { echo "Failed to copy custom ucm configurations"; exit 1; }
 cd ./alsa-ucm-conf || { echo "Failed to switch to ucm configuration directory"; exit 1; }
 tar zcf ../rootc/packages/alsa-ucm-conf.tar.gz * --owner=0 --group=0 || { echo "Failed to create ucm configuration archive"; exit 1; }

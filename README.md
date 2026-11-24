@@ -19,7 +19,7 @@ off the laptop model — but none has been tried. See *Known limitations*.
 
 ## Why upstream brunch does not run here
 
-Upstream ships kernels 6.6 / 6.12 (plus an experimental 6.18) and the graphics userspace
+Upstream ships kernels 6.6 / 6.12 / 6.18 and the graphics userspace
 inside the ChromeOS recovery image. Neither knows about Lunar Lake: the image carries Mesa older than
 25.2 (iris has no `I915_FORMAT_MOD_4_TILED_LNL_CCS`, minigbm has no `xe` backend), and
 brunch's kernel configs disable the Intel IOMMU, without which these machines do not
