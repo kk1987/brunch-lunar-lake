@@ -1,16 +1,14 @@
 --- a/drivers/gpu/drm/i915/display/intel_fbdev.c
 +++ b/drivers/gpu/drm/i915/display/intel_fbdev.c
-@@ -277,10 +277,10 @@
- 	ifbdev->fb = NULL;
+@@ -271,9 +271,9 @@
+ 	int depth = fb->base.format->depth;
+ 	int bpp = fb->base.format->cpp[0] * 8;
  
- 	if (fb &&
--	    (sizes->fb_width > fb->base.width ||
--	     sizes->fb_height > fb->base.height)) {
-+	    (sizes->fb_width != fb->base.width ||
-+	     sizes->fb_height != fb->base.height)) {
+-	if (sizes->fb_width > width || sizes->fb_height > height) {
++	if (sizes->fb_width != width || sizes->fb_height != height) {
  		drm_dbg_kms(display->drm,
--			    "BIOS fb too small (%dx%d), we require (%dx%d),"
-+			    "BIOS fb not valid (%dx%d), we require (%dx%d),"
- 			    " releasing it\n",
- 			    fb->base.width, fb->base.height,
- 			    sizes->fb_width, sizes->fb_height);
+-			    "BIOS fb too small (%dx%d), we require (%dx%d), releasing it\n",
++			    "BIOS fb not valid (%dx%d), we require (%dx%d), releasing it\n",
+ 			    width, height, sizes->fb_width, sizes->fb_height);
+ 		return false;
+ 	}

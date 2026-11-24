@@ -1,0 +1,75 @@
+--- a/drivers/platform/x86/chromeos_acpi.c
++++ b/drivers/platform/x86/chromeos_acpi.c
+@@ -87,19 +87,7 @@
+ 
+ MODULE_DEVICE_TABLE(acpi, chromeos_device_ids);
+ 
+-static int chromeos_device_add(struct acpi_device *device);
+-static void chromeos_device_remove(struct acpi_device *device);
+-
+ static struct chromeos_acpi_if chromeos_acpi_if_data;
+-static struct acpi_driver chromeos_acpi_driver = {
+-	.name = "ChromeOS Device",
+-	.class = "ChromeOS",
+-	.ids = chromeos_device_ids,
+-	.ops = {
+-		.add = chromeos_device_add,
+-		.remove = chromeos_device_remove,
+-		},
+-};
+ 
+ /* The default list of methods the chromeos ACPI device is supposed to export,
+  * if the MLST method is not present or is poorly formed.  The MLST method
+@@ -143,7 +131,7 @@
+ 
+ static struct chromeos_acpi_dev chromeos_acpi = { };
+ 
+-static bool chromeos_on_legacy_firmware(void)
++static bool __maybe_unused chromeos_on_legacy_firmware(void)
+ {
+ 	/*
+ 	 * Presense of the CHNV ACPI element implies running on a legacy
+@@ -640,7 +628,7 @@
+ 	return 0;
+ }
+ 
+-static int chromeos_device_add(struct acpi_device *device)
++static int __maybe_unused chromeos_device_add(struct acpi_device *device)
+ {
+ 	int i;
+ 
+@@ -655,7 +643,7 @@
+ 	return 0;
+ }
+ 
+-static void chromeos_device_remove(struct acpi_device *device)
++static void __maybe_unused chromeos_device_remove(struct acpi_device *device)
+ {
+ }
+ 
+@@ -713,19 +701,12 @@
+ 
+ 	device_create_file(&chromeos_acpi.p_dev->dev, &dev_attr_HWID);
+ 
+-	return 0;
+-
+-	ret = acpi_bus_register_driver(&chromeos_acpi_driver);
+-	if (ret < 0) {
+-		printk(MY_ERR "failed to register driver (%d)\n", ret);
+-		platform_device_unregister(chromeos_acpi.p_dev);
+-		chromeos_acpi.p_dev = NULL;
+-		return ret;
+-	}
+-	printk(MY_INFO "installed%s\n",
+-	       chromeos_on_legacy_firmware() ? " (legacy mode)" : "");
+-
+-	return 0;
++	/*
++	 * brunch: the GGL0001 ACPI driver is never registered (brunch only
++	 * needs the platform device and its fake HWID attribute), and Linux
++	 * 7.3 removed struct acpi_driver altogether.
++	 */
++	return ret;
+ }
+ 
+ subsys_initcall(chromeos_acpi_init);

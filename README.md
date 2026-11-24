@@ -5,8 +5,8 @@ Intel laptops that upstream brunch cannot run:
 
 | platform | what this fork provides | tested |
 |---|---|---|
-| **Lunar Lake** (Core Ultra 200V, Xe2) | 7.1 kernel, Mesa 25.3.6 graphics, ARCVM fixes, SOF audio firmware | yes, one machine |
-| **Meteor Lake** (Core Ultra 100), **Arrow Lake** (Core Ultra 200H / U / S) | 7.1 kernel, SOF audio firmware — graphics already work with the ChromeOS image's own Mesa | no |
+| **Lunar Lake** (Core Ultra 200V, Xe2) | 7.3 kernel, Mesa 25.3.6 graphics, ARCVM fixes, SOF audio firmware | yes, one machine |
+| **Meteor Lake** (Core Ultra 100), **Arrow Lake** (Core Ultra 200H / U / S) | 7.3 kernel, SOF audio firmware — graphics already work with the ChromeOS image's own Mesa | no |
 
 Everyone else is better served by upstream brunch.
 
@@ -28,7 +28,7 @@ complete enough to give sound (see *Audio firmware*).
 
 ## Installing
 
-Install as with upstream brunch and pick `7.1` in `brunch-setup` — release builds ship
+Install as with upstream brunch and pick `7.3` in `brunch-setup` — release builds ship
 only that kernel, so it is the only entry. The patches activate on their own by iGPU
 PCI id; these options override them:
 
@@ -43,12 +43,12 @@ Lunar Lake, still work.
 
 ## What this fork adds
 
-### 7.1 kernel (`kernel-patches/7.1/`, `kernel-patches/7.1_*config`)
+### 7.3 kernel (`kernel-patches/7.3/`, `kernel-patches/7.3_*config`)
 
-No ChromiumOS 7.1 branch exists, so this kernel is built from a **vanilla kernel.org
+No ChromiumOS 7.3 branch exists, so this kernel is built from a **vanilla kernel.org
 tree**, with its config assembled from a vendored Arch Linux baseline
-(`7.1_base_config`), brunch's `brunch_configs` and the additions in
-`7.1_extra_configs`. Besides the forward-ported brunch patches it carries four
+(`7.3_base_config`), brunch's `brunch_configs` and the additions in
+`7.3_extra_configs`. Besides the forward-ported brunch patches it carries four
 ChromeOS kernel behaviours that ChromeOS userspace depends on:
 
 | patch | why |
@@ -58,7 +58,7 @@ ChromeOS kernel behaviours that ChromeOS userspace depends on:
 | `drm_master_relax.patch` | ChromeOS relies on relaxed DRM master handover between frecon and chrome. |
 | `kvm_honor_guest_pat.patch` | See *ARCVM graphics*. |
 
-Config changes worth knowing (all commented in `7.1_extra_configs`): the Intel IOMMU is
+Config changes worth knowing (all commented in `7.3_extra_configs`): the Intel IOMMU is
 re-enabled, because firmware that hands the CPU over in locked x2APIC mode panics the
 kernel before any console exists unless DMAR interrupt remapping is available; and the
 boot console uses sysfb/simpledrm instead of efifb, which on these machines maps the
@@ -67,15 +67,17 @@ framebuffer uncached and takes seconds per printk line.
 ### External drivers (`external-drivers/`)
 
 Upstream builds its 13 out-of-tree modules (Realtek Wi-Fi, broadcom-wl, acpi_call, ipts,
-ithc) only for 6.6 / 6.12. They are ported to 7.1: kbuild dropping `EXTRA_CFLAGS`, the
+ithc) only for 6.6 / 6.12. They are ported to 7.3: kbuild dropping `EXTRA_CFLAGS`, the
 `del_timer*` / `from_timer` removals, the 6.14 `link_id` and 6.17 `radio_idx` cfg80211
-arguments, 7.1's `struct wireless_dev *` in the key/station ops, and 7.1 hiding the
-pppoe flexible-array members. Where an active upstream already had the fixes, the copy
+arguments, 7.1's `struct wireless_dev *` in the key/station ops, 7.1 hiding the
+pppoe flexible-array members, 7.2 removing `strncpy()` and AppleTalk, 7.2's
+`rx_addr` remain-on-channel argument, and 7.3 passing the remain-on-channel and
+mgmt-TX cookies by value. Where an active upstream already had the fixes, the copy
 was synced to it (rtl8192eu → Mange, rtl8812au / rtl8821cu → morrownr, rtl885xxx →
 morrownr/rtw89); provenance is in the commit messages. The changes are version-guarded
 or version-neutral, so 6.6 / 6.12 still build, but CI no longer builds them — run a
-`BRUNCH_KERNELS="6.6 6.12 7.1"` build before sending any of it upstream. `brunch-setup`
-offers the same driver options for 7.1 as for 6.6 / 6.12. The modules are compile-tested
+`BRUNCH_KERNELS="6.6 6.12 7.3"` build before sending any of it upstream. `brunch-setup`
+offers the same driver options for 7.3 as for 6.6 / 6.12. The modules are compile-tested
 only.
 
 ### Mesa 25.3.6 (`mesa-patches/`, `packages/mesa-lnl.tar.gz`, `85-mesa_lnl.sh`)
@@ -177,7 +179,7 @@ writes too.
 ## Meteor Lake and Arrow Lake
 
 These need far less than Lunar Lake, because ChromeOS itself supports them. Both run on
-**i915** (7.1's `xe` still marks them `require_force_probe`, and brunch sets
+**i915** (7.3's `xe` still marks them `require_force_probe`, and brunch sets
 `CONFIG_DRM_I915_FORCE_PROBE="*"`), and the Mesa 24.2.3 in a volteer R149 image already
 lists `Intel(R) Arc(tm) Graphics (MTL)` and `Intel(R) Graphics (ARL)`. So the Mesa
 override stays off; do not force it with `lnl_mesa`, since its minigbm shim and chrome
@@ -209,12 +211,12 @@ Same as upstream:
 
 ```sh
 ./prepare_kernels.sh                       # downloads and patches the kernel trees
-./build_kernels.sh                         # or ./build_kernels.sh 7.1 for just this one
+./build_kernels.sh                         # or ./build_kernels.sh 7.3 for just this one
 sudo bash build_brunch.sh <recovery_image.bin>
 ```
 
-`prepare_kernels.sh` prepares only `7.1` by default, and the CI kernel matrix follows
-it, so releases are 7.1-only. `BRUNCH_KERNELS="6.6 6.12 6.18 7.1" ./prepare_kernels.sh`
+`prepare_kernels.sh` prepares only `7.3` by default, and the CI kernel matrix follows
+it, so releases are 7.3-only. `BRUNCH_KERNELS="6.6 6.12 6.18 7.3" ./prepare_kernels.sh`
 gives a full upstream-style build; the `brunch-setup` kernel menu is generated from the
 kernels the build actually ships.
 

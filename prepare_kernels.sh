@@ -50,7 +50,7 @@ download_and_patch_kernels()
 {
 for kernel in $kernels; do
 	case "$kernel" in
-		7.1)
+		7.3)
 			# vanilla kernel.org source (no ChromiumOS branch exists for this version)
 			kernel_version="$lnl_kernel_version"
 			echo "Downloading vanilla kernel source for kernel $kernel version $kernel_version from https://cdn.kernel.org/pub/linux/kernel/v7.x/linux-$kernel_version.tar.xz"
@@ -108,8 +108,8 @@ done
 }
 
 chromeos_version="R159"
-kernels="${BRUNCH_KERNELS:-7.1}"
-lnl_kernel_version="7.1.5"
+kernels="${BRUNCH_KERNELS:-7.3}"
+lnl_kernel_version="7.3.6"
 
 for kernel in $kernels; do rm -rf "./kernels/$kernel" "./kernels/chromebook-$kernel"; done
 mkdir -p ./kernels

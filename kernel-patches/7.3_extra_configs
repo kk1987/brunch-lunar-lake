@@ -1,7 +1,7 @@
-# Extra config for the 7.1 (vanilla kernel.org) brunch kernel.
+# Extra config for the 7.3 (vanilla kernel.org) brunch kernel.
 #
 # Appended after brunch_configs by prepare_kernels.sh, so entries here win.
-# The baseline is 7.1_base_config (a hardware-proven Arch Linux config), which
+# The baseline is 7.3_base_config (the stock Arch Linux config for the same release), which
 # is a distro config and not a ChromeOS one - so most of what follows is either
 # a ChromeOS userspace requirement the distro config does not have, or a Lunar
 # Lake platform driver.
@@ -68,7 +68,7 @@ CONFIG_OVERLAY_FS=y
 # CrOS production config (base.config: BLK_DEV_DM=y DM_VERITY=y): builtin, so
 # no module load ordering is involved and a kernel update stays a single-file
 # bzImage swap. ChromeOS-format verity table support itself is
-# kernel-patches/7.1/chromeos/dm_verity_chromeos_table.patch.
+# kernel-patches/7.3/chromeos/dm_verity_chromeos_table.patch.
 CONFIG_BLK_DEV_DM=y
 CONFIG_DM_VERITY=y
 

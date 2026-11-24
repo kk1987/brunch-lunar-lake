@@ -14,7 +14,7 @@
 +	 * restores the pre-c9c1e20b4c7d "always honor guest PAT on self-snoop"
 +	 * behavior without touching the userspace-visible quirk bits.
 +	 */
-+	if (static_cpu_has(X86_FEATURE_SELFSNOOP))
++	if (cpu_feature_enabled(X86_FEATURE_SELFSNOOP))
 +		return false;
 +
  	return !kvm_arch_has_noncoherent_dma(kvm) &&

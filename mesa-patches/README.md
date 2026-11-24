@@ -163,7 +163,7 @@ ChromeOS R149 image whose minigbm predates Lunar Lake and has no entry for that
 modifier, so when the guest negotiates it for a buffer it exports, Chrome
 imports the buffer as plain 4-tiled and reads the compressed bytes as if they
 were pixels. The kernel side of this is already handled —
-`kernel-patches/7.1/chromeos/0002-lnl_bmg_ccs_deadvertise.patch` removes the
+`kernel-patches/7.3/chromeos/0002-lnl_bmg_ccs_deadvertise.patch` removes the
 same two modifiers from the i915 display planes — and this is its userspace
 counterpart.
 
@@ -207,7 +207,7 @@ decide whether a Xe2 CCS modifier is offered, and all three have to be patched:
 
 | component | decision site | patch |
 |---|---|---|
-| i915 display planes | `intel_fb.c` modifier table | `kernel-patches/7.1/chromeos/0002-lnl_bmg_ccs_deadvertise.patch` |
+| i915 display planes | `intel_fb.c` modifier table | `kernel-patches/7.3/chromeos/0002-lnl_bmg_ccs_deadvertise.patch` |
 | ANV | `isl_drm.c` `isl_drm_modifier_get_score()` | `0003` |
 | iris | `iris_resource.c` `modifier_is_supported()` | `0004` |
 
