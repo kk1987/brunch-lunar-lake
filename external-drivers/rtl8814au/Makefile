@@ -1,3 +1,4 @@
+ccflags-y += -include $(src)/compat_strncpy.h
 ccflags-y += $(USER_ccflags-y)
 ccflags-y += -O1
 #ccflags-y += -O3

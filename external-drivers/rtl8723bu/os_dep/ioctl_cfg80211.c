@@ -4616,8 +4616,22 @@ static s32 cfg80211_rtw_remain_on_channel(struct wiphy *wiphy,
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(3,8,0))
 	enum nl80211_channel_type channel_type,
 #endif
-	unsigned int duration, u64 *cookie)
+	unsigned int duration
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(7, 3, 0))
+	, u64 cookie /* cookie is pre-assigned by cfg80211 */
+#else
+	, u64 *cookie
+#endif
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(7, 2, 0))
+	, const u8 *rx_addr
+#endif
+	)
 {
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(7, 3, 0))
+	u64 roc_cookie = cookie;
+#else
+	u64 roc_cookie = *cookie;
+#endif
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,6,0))
 	struct net_device *ndev = wdev_to_ndev(wdev);
 #endif
@@ -4667,7 +4681,7 @@ static s32 cfg80211_rtw_remain_on_channel(struct wiphy *wiphy,
 	#if (LINUX_VERSION_CODE < KERNEL_VERSION(3,8,0))
 	pcfg80211_wdinfo->remain_on_ch_type= channel_type;
 	#endif
-	pcfg80211_wdinfo->remain_on_ch_cookie= *cookie;
+	pcfg80211_wdinfo->remain_on_ch_cookie= roc_cookie;
 
 	rtw_scan_abort(padapter);
 #ifdef CONFIG_CONCURRENT_MODE
@@ -4792,7 +4806,7 @@ static s32 cfg80211_rtw_remain_on_channel(struct wiphy *wiphy,
 	}
 #endif
 
-	rtw_cfg80211_ready_on_channel(padapter, *cookie, channel, channel_type, duration, GFP_KERNEL);
+	rtw_cfg80211_ready_on_channel(padapter, roc_cookie, channel, channel_type, duration, GFP_KERNEL);
 
 exit:
 	if (err) {
@@ -5045,8 +5059,14 @@ static int cfg80211_rtw_mgmt_tx(struct wiphy *wiphy,
 #else // kernel >= 3.14
 	struct cfg80211_mgmt_tx_params *params,
 #endif // kernel >= 3.14
-	u64 *cookie)
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(7, 3, 0))
+	u64 cookie /* cookie is pre-assigned by cfg80211 */
+#else
+	u64 *cookie
+#endif
+	)
 {
+	u64 tx_cookie;
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,6,0))
 	struct net_device *ndev = wdev_to_ndev(wdev);
 #endif // kernel >= 3.6
@@ -5080,7 +5100,12 @@ static int cfg80211_rtw_mgmt_tx(struct wiphy *wiphy,
 	pwdev_priv = adapter_wdev_data(padapter);
 
 	/* cookie generation */
-	*cookie = (unsigned long) buf;
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(7, 3, 0))
+	tx_cookie = cookie; /* cfg80211 assigns the cookie and expects it unchanged */
+#else
+	tx_cookie = (unsigned long) buf;
+	*cookie = tx_cookie; /* cfg80211 reads the cookie back through the pointer */
+#endif
 
 #ifdef CONFIG_DEBUG_CFG80211
 	DBG_871X(FUNC_ADPT_FMT" len=%zu, ch=%d"
@@ -5103,9 +5128,9 @@ static int cfg80211_rtw_mgmt_tx(struct wiphy *wiphy,
 
 	/* indicate ack before issue frame to avoid racing with rsp frame */
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,37)) || defined(COMPAT_KERNEL_RELEASE)
-	rtw_cfg80211_mgmt_tx_status(padapter, *cookie, buf, len, ack, GFP_KERNEL);
+	rtw_cfg80211_mgmt_tx_status(padapter, tx_cookie, buf, len, ack, GFP_KERNEL);
 #elif  (LINUX_VERSION_CODE>=KERNEL_VERSION(2,6,34) && LINUX_VERSION_CODE<=KERNEL_VERSION(2,6,35))
-	cfg80211_action_tx_status(ndev, *cookie, buf, len, ack, GFP_KERNEL);
+	cfg80211_action_tx_status(ndev, tx_cookie, buf, len, ack, GFP_KERNEL);
 #endif
 
 	if (rtw_action_frame_parse(buf, len, &category, &action) == _FALSE) {

@@ -21,7 +21,10 @@
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 15, 0))
 	#include <net/ipx.h>
 #endif
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(7, 2, 0))
+	/* AppleTalk was removed from the kernel in 7.2 */
 	#include <linux/atalk.h>
+#endif
 	#include <linux/udp.h>
 	#include <linux/if_pppox.h>
 #endif
@@ -911,6 +914,7 @@ int nat25_db_handle(_adapter *priv, struct sk_buff *skb, int method)
 		}
 	}
 
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(7, 2, 0))
 	/*---------------------------------------------------*/
 	/*         Handle IPX and Apple Talk frame          */
 	/*---------------------------------------------------*/
@@ -1138,6 +1142,7 @@ int nat25_db_handle(_adapter *priv, struct sk_buff *skb, int method)
 
 		return -1;
 	}
+#endif /* LINUX_VERSION_CODE < KERNEL_VERSION(7, 2, 0) */
 
 	/*---------------------------------------------------*/
 	/*                Handle PPPoE frame                */

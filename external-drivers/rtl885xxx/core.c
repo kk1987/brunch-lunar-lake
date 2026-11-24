@@ -7522,7 +7522,8 @@ static int rtw89_core_register_hw(struct rtw89_dev *rtwdev)
 	if (!chip->support_rnr)
 		hw->wiphy->flags |= WIPHY_FLAG_SPLIT_SCAN_6GHZ;
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 8, 3)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 8, 3) && LINUX_VERSION_CODE < KERNEL_VERSION(7, 3, 0)
+	/* WIPHY_FLAG_DISABLE_WEXT is gone in 7.3 */
 	if (chip->chip_gen == RTW89_CHIP_BE)
 		hw->wiphy->flags |= WIPHY_FLAG_DISABLE_WEXT;
 #endif

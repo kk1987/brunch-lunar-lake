@@ -4,6 +4,7 @@ MODDESTDIR := kernel/drivers/net/wireless/
 
 DEPMOD  = /sbin/depmod
 
+ccflags-y += -include $(src)/compat_strncpy.h
 ccflags-y += $(USER_EXTRA_CFLAGS)
 ccflags-y += -O1
 #ccflags-y += -O3
